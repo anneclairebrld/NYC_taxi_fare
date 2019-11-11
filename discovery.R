@@ -1,13 +1,17 @@
 library(readr)
 library(dplyr)
+install.packages('geosphere')
 library(geosphere)
 library(ggplot2)
+install.packages('lubridate')
 library(lubridate)
-setwd('~/workspace/NYC_taxi_fare') # set this as working directory
+setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/NYC_taxi_fare') # set this as working directory
 
 # read only first 100 lines as too much data 
-file_in <-file('./data/train.csv', 'r')
+file_in <-file('./train.csv', 'r')
 chunk_size <- 1000
+# Hello 
+
 
 df <- read.csv(file = './data/train.csv', nrows=100000) 
 
