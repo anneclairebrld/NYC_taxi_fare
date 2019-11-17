@@ -83,21 +83,21 @@ log_amount <- function(df){
   return(df)
 }
 
-set_up_google_api <- function(df){
+set_up_google_api <- function(){
   my_key =  'AIzaSyDnZwhF1o5Yc5XcOfW1oCZSNU7Z5Dpg5pI'
   register_google(my_key, write = TRUE)
 }
 
 plot_heat_map <- function(df){
   # get map of manhattan 
-  manhattan <- get_map("new york", zoom = 12, color = "bw")
+  manhattan <- get_map("manhattan", zoom = 11, color = "bw")
   
   # concentrate on manhattan 
-  df <- df %>% filter( between(pickup_latitude, 40.70, 40.83) & between(pickup_longitude, -74.025, -73.93) )
+  df <- df %>% filter( between(dropoff_latitude, 40.70, 40.83) & between(dropoff_longitude, -74.025, -73.93) )
   
   ggmap(manhattan, darken = 0.5) +
     scale_fill_viridis(option = 'plasma') +
-    geom_bin2d(data = df, aes(pickup_longitude, pickup_latitude), bins=60, alpha=0.6) +
+    geom_bin2d(data = df, aes(dropoff_longitude, dropoff_latitude), bins=60, alpha=0.6) +
     labs(x = "pickup longitude", y = "pickup latitude", fill = "concentration")
 }
 
@@ -126,9 +126,8 @@ train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30')
 train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
 head(train_df)
 
-print(train_df[train_df$fare_amount == 0.01, 'distance_kms'])
-print(min(train_df$fare_amount))
-print(max(train_df$pickup_date))
-print(nrow(train_df))
+# plot heat maps 
+set_up_google_api()# this should really be run only once
+plot_heat_map(train_df)
 
 
