@@ -7,7 +7,9 @@ library(lubridate)
 library(ggmap)
 library(tree)
 library(caret)
-#library(randomForest)
+library(randomForest)
+library(pROC)
+library(viridis)
 
 ## remove bad rows from initial dataset 
 remove_bad_rows <- function(df){
@@ -119,7 +121,13 @@ plot_graphs <- function(df, graph = 'none'){
   if(graph == 'heatmap'){
     # plot heat maps -> only do if doing graphs
     set_up_google_api() # this should really be run only once
-    plot_heat_map(train_df)
+    plot_heat_map(df)
+  }else if (graph == 'fare_amount_hist'){
+    ggplot(data = df, aes(fare_amount)) + 
+      geom_histogram(binwidth = 1)  +
+      scale_x_continuous('Fare amount in dollars', limits = c(0, 60)) + 
+      scale_y_continuous('Number of rides') + 
+      ggtitle('Histogram of taxi rides fare amount')
   }
 }
 
@@ -150,11 +158,53 @@ train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
 head(train_df)
 
 # specify which graph you want to plot if any
-plot_graphs(df, graph = 'none')
+plot_graphs(train_df, graph = 'fare_amount_hist')
 
-## Run cross validation on a model -> this only works for some regression elements
-train.control <- trainControl(method = 'repeatedcv', number = 10)
+## CROSS VALIDATION ON AMOUNT MODEL 
+amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+      dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature + passenger_count + weekday
-amount_model <- train(amount_formula, data = train_df, method = 'lm', trControl = train.control)
-print(amount_model)
+
+# shuffle the data 
+train_df <- train_df[sample(nrow(train_df)), ]
+nfolds <- 10 
+index <- rep(1:nfolds, length.out = nrow(train_df))
+test.rmse <- rep(0, nfolds)
+test.mse <- rep(0, nfolds)
+
+for(i in 1:nfolds){
+  insample  = which(index != i)
+  outsample = which(index == i)
+ 
+  X_test <- train_df[insample, ]
+  X_train <- train_df[outsample, ]
+  
+  #amount_model <- tree(amount_formula, data = X_train)
+  #amount_model <- lm(amount_formula, data = X_train)
+  amount_model <- randomForest(amount_formula, X_train, ntree = 100, na.action = na.omit)
+  predictions_rf  <- predict(amount_model, X_test)
+  
+  amount_model <- tree(amount_formula, data = X_train)
+  predictions_tree  <- predict(amount_model, X_test)
+  
+  #test.rmse[i] =  RMSE(X_test$fare_amount, predictions) # mean squared test error
+  #test.mse[i] =  mean((X_test$fare_amount -  predictions)^2)
+  #train.rmse[i] = RMSE(X_train$fare_amount, predictions) # root meat squared 
+  print((amount_model))
+} 
+
+## Amount model plots 
+plot(amount_model)
+# plot(train.rmse) 
+#plot(test.rmse) 
+#plot(test.mse) 
+
+
+
+roc_rf <- roc(X_test$fare_amount, predictions_rf)
+roc_tree <- roc(X_test$fare_amount, predictions_tree)
+
+plot(roc_rf) + 
+  lines(roc_tree, col='red')
+# Get results from last cross validation and make a df 
+pred_df <- data.frame(true = X_test$fare_amount, preds = predictions_rf)
