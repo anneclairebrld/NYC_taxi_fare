@@ -4,12 +4,10 @@ library(rgdal)
 library(geosphere)
 library(ggplot2)
 library(lubridate)
-library(sp)
-library(st)
-library(sf)
-library(raster)
-library(tmap)
 library(ggmap)
+library(tree)
+library(caret)
+#library(randomForest)
 
 ## remove bad rows from initial dataset 
 remove_bad_rows <- function(df){
@@ -41,6 +39,12 @@ date_time_features <- function(df){
   return(df)
 }
 
+get_only_manhattan_data <- function(df){
+  df <- df %>% filter( between(dropoff_latitude, 40.70, 40.83) & between(dropoff_longitude, -74.025, -73.93) )
+  
+  return(df)
+}
+
 # compute distance between pickup and dropoff 
 compute_distance <- function(df, type='euclidean'){
   if(type == 'euclidean') { # in kms
@@ -56,6 +60,7 @@ compute_distance <- function(df, type='euclidean'){
 # get day of week from date
 get_day_of_week <- function(df){
   df$weekday <- weekdays(as.POSIXct(df$pickup_date), abbreviate = F)
+  df$weekday <- as.factor(df$weekday)
   
   return(df)
 }
@@ -64,7 +69,14 @@ get_day_of_week <- function(df){
 worday_weekend_feature <- function(df){
   df$workday <- 1 
   df$workday[df$weekday %in% c('Saturday', 'Sunday')] <- 0
+  df$workday <- as.factor(df$workday)
   
+  return(df)
+}
+
+# get month and make it factor i.e. a month is a class
+get_month_feature <- function(df){
+  df$month_feature <- as.factor(month(df$pickup_date))
   return(df)
 }
 
@@ -77,7 +89,7 @@ round_to_hour <- function(df){
   return(df)
 }
 
-# log base(10) amount -> maybe should not be base 10
+# log base(10) amount -> maybe should not be base 10 ?
 log_amount <- function(df){
   df$log_amount <- log10(df$fare_amount)
   return(df)
@@ -88,17 +100,27 @@ set_up_google_api <- function(){
   register_google(my_key, write = TRUE)
 }
 
+# heat map plotting 
 plot_heat_map <- function(df){
   # get map of manhattan 
   manhattan <- get_map("manhattan", zoom = 11, color = "bw")
   
   # concentrate on manhattan 
-  df <- df %>% filter( between(dropoff_latitude, 40.70, 40.83) & between(dropoff_longitude, -74.025, -73.93) )
+  get_only_manhattan_data(df)
   
   ggmap(manhattan, darken = 0.5) +
     scale_fill_viridis(option = 'plasma') +
     geom_bin2d(data = df, aes(dropoff_longitude, dropoff_latitude), bins=60, alpha=0.6) +
     labs(x = "pickup longitude", y = "pickup latitude", fill = "concentration")
+}
+
+# function to plots graphs  
+plot_graphs <- function(df, graph = 'none'){
+  if(graph == 'heatmap'){
+    # plot heat maps -> only do if doing graphs
+    set_up_google_api() # this should really be run only once
+    plot_heat_map(train_df)
+  }
 }
 
 # set working dir to my file 
@@ -115,9 +137,10 @@ train_df <- date_time_features(train_df)
 train_df <- compute_distance(train_df)
 train_df <- get_day_of_week(train_df)
 train_df <- round_to_hour(train_df)
-train_df <- get_day_of_week(train_df)
 train_df <- worday_weekend_feature(train_df)
-train_df <- log_amount(train_df)
+train_df <- get_month_feature(train_df)
+#train_df <- log_amount(train_df)
+train_df <- get_only_manhattan_data(train_df)
 
 # select final year (check data for now I am taking this)
 train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30') 
@@ -126,8 +149,12 @@ train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30')
 train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
 head(train_df)
 
-# plot heat maps 
-set_up_google_api()# this should really be run only once
-plot_heat_map(train_df)
+# specify which graph you want to plot if any
+plot_graphs(df, graph = 'none')
 
+## Run cross validation on a model -> this only works for some regression elements
+train.control <- trainControl(method = 'repeatedcv', number = 10)
 
+amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature + passenger_count + weekday
+amount_model <- train(amount_formula, data = train_df, method = 'lm', trControl = train.control)
+print(amount_model)

@@ -127,7 +127,7 @@ df_pickup = df %>% select(pickup_latitude, pickup_longitude)
 coordinates(df_pickup) <- ~ pickup_longitude + pickup_latitude # convert to spatialpointsdf Importantstep  => remembers the coordinates for each 
 proj4 <- st_crs(washington)$proj4string
 pickup_points_sf = df_pickup %>% st_as_sf(coors=c('pickup_longitude', 'pickup_latitude'),  crs = proj4)
-pickup_points_rastered = raster(pickup_points_sf)
+# pickup_points_rastered = raster(pickup_points_sf)
 tm_shape(washington) +
   tm_polygons('#f0f0f0f0', border.alpha = 0.2) +
   tm_dots(c=pickup_points) 
