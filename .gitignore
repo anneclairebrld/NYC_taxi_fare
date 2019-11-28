@@ -11,3 +11,7 @@ data/
 .Rproj.user
 
 .ipynb_checkpoints/
+
+*.history
+
+.DS_Store
