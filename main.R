@@ -188,6 +188,8 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
   } 
 }
 
+#------------------------------------------------------------------------------------------------
+
 # set working dir to my file 
 setwd('~/workspace/NYC_taxi_fare')
 
@@ -196,7 +198,7 @@ train_df <- read.csv(file = './data/train.csv', nrows=100000)
 head(train_df)
 
 
-# do feature engineering
+# Feature engineering ---------------------------------------------------------------------------
 train_df <- remove_bad_rows(train_df)
 train_df <- date_time_features(train_df)
 train_df <- compute_distance(train_df)
@@ -218,17 +220,17 @@ head(train_df)
 # specify which graph you want to plot if any
 plot_graphs(train_df, graph = 'fare_amount_hist')
 
-## CROSS VALIDATION ON AMOUNT MODEL 
-amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
+regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
       dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-amount_formula2 = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
   dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-cross_validation(train_df, 'randomForest', amount_formula2, 'classifier')
-#cross_validation(train_df, 'randomForest', amount_formula, 'regression')
-#cross_validation(train_df, 'lm', amount_formula, 'regression')
-#cross_validation(train_df, 'tree', amount_formula2, 'regression')
+cross_validation(train_df, 'randomForest', classifier_amount_formula, 'classifier')
+#cross_validation(train_df, 'randomForest', regression_amount_formula, 'regression')
+#cross_validation(train_df, 'lm', regression_amount_formula, 'regression')
+#cross_validation(train_df, 'tree', regression_amount_formula, 'regression')
 
 # Get results from last cross validation and make a df 
 pred_df <- data.frame(true = X_test$fare_amount_class, preds = predictions_rf)
