@@ -12,6 +12,12 @@ library(pROC)
 library(viridis)
 library(tidyverse)
 library(ggthemes)
+library(gmapsdistance)
+library(ggmap)
+library(leaflet)
+library(stringr)
+
+Sys.setenv(TZ='UTC')
 
 ## remove bad rows from initial dataset 
 remove_bad_rows2 <- function(df){
@@ -25,7 +31,6 @@ remove_bad_rows2 <- function(df){
   df <- subset(df, !df$pickup_latitude < -90)
   df <- subset(df, !df$dropoff_latitude < -90)
  
-  
   # remove rows for passengers = 0 
   df <- subset(df, !df$passenger_count == 0)
   
@@ -39,6 +44,47 @@ remove_bad_rows2 <- function(df){
 date_time_features <- function(df){
   df$pickup_date <- as.Date(df$pickup_datetime)
   df$pickup_time <- format(as.POSIXct(df$pickup_datetime), '%H:%M:%S') 
+  
+  return(df)
+}
+
+# routing using google API
+
+set_up_google_api <- function(){
+  my_key =  'AIzaSyDnZwhF1o5Yc5XcOfW1oCZSNU7Z5Dpg5pI'
+  register_google(my_key, write = TRUE)
+}
+
+ggmap::register_google(key = my_key)
+
+###
+
+routing_features <- function(df){
+  df$pickup = str_replace_all(paste(as.character(df$pickup_latitude),
+                                    "+", 
+                                    as.character(df$pickup_longitude)),
+                              " ",
+                              "")
+
+  df$dropoff = str_replace_all(paste(as.character(df$dropoff_latitude),
+                                     "+", 
+                                     as.character(df$dropoff_longitude)),
+                               " ",
+                               "")
+  
+  results = gmapsdistance(origin = df$pickup, 
+                          destination = df$dropoff, 
+                          combinations = "pairwise", 
+                          mode = "driving", 
+                          # dep_date = data$pickup_date,
+                          # dep_time = data$pickup_time,
+                          key = my_key)
+  
+  df$distance = results$Distance$Distance
+  df$distance = df$distance/1000 # in km
+  
+  df$time = results$Time$Time
+  df$time = data$time/60 # in minutes
   
   return(df)
 }
@@ -113,11 +159,6 @@ classify_fare_amount <- function(df) {
 log_amount <- function(df){
   df$log_amount <- log10(df$fare_amount)
   return(df)
-}
-
-set_up_google_api <- function(){
-  my_key =  'AIzaSyDnZwhF1o5Yc5XcOfW1oCZSNU7Z5Dpg5pI'
-  register_google(my_key, write = TRUE)
 }
 
 # heat map plotting 
