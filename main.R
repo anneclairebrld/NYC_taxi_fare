@@ -10,6 +10,7 @@ library(caret)
 library(randomForest)
 library(pROC)
 library(viridis)
+library(tidyverse)
 
 ## remove bad rows from initial dataset 
 remove_bad_rows <- function(df){
@@ -91,6 +92,22 @@ round_to_hour <- function(df){
   return(df)
 }
 
+## classification
+classify_fare_amount <- function(df) {
+  df$fare_amount <- as.numeric(df$fare_amount)
+  df <- df %>% mutate(fare_amount_class = case_when(
+    between(fare_amount, 0, 3) ~ '0-5',
+    between(fare_amount, 5, 10) ~ '5-10',
+    between(fare_amount, 10, 15) ~ '10-15',
+    between(fare_amount, 15, 20) ~ '15-20', 
+    fare_amount > 20 ~ '20+'
+  ))
+  
+  df$fare_amount_class <- as.factor(df$fare_amount_class)
+  
+  return(df)
+}
+
 # log base(10) amount -> maybe should not be base 10 ?
 log_amount <- function(df){
   df$log_amount <- log10(df$fare_amount)
@@ -131,6 +148,46 @@ plot_graphs <- function(df, graph = 'none'){
   }
 }
 
+cross_validation <- function(df, model, formula, model_type, nfolds=10) {
+  if(model_type == 'regression'){
+    test.rmse <- rep(0, nfolds)
+    test.mse <- rep(0, nfolds)
+  }
+  df <- df[sample(nrow(df)), ]
+  index <- rep(1:nfolds, length.out = nrow(df))
+  
+  for(i in 1:nfolds){
+    insample  = which(index != i)
+    outsample = which(index == i)
+    
+    X_test <- df[insample, ]
+    X_train <- df[outsample, ]
+    
+    if(model == 'randomForest'){
+      amount_model<- randomForest(formula, X_train, ntree = 100, na.action = na.omit)
+    }else if (model == 'tree'){
+      amount_model <- tree(formula, data = X_train)
+    }else if (model == 'lm'){
+      amount_model <- lm(formula, data = X_train)
+    }
+  
+    predictions  <- predict(amount_model, X_test)
+    
+    if(model_type == 'classifier') {
+      target <- X_test$fare_amount_class
+      
+      cm <- confusionMatrix(target, predictions)
+      print((amount_model$confusion))
+      print(cm$overall)
+    }else {
+      target <- X_test$fare_amount
+      test.rmse[i] =  RMSE(target, predictions)
+      test.mse[i] =  mean((target -  predictions)^2)
+      cat(c('RMSE: ', test.rmse[i], ' MSE: ', test.mse[i], '\n'))
+    }
+  } 
+}
+
 # set working dir to my file 
 setwd('~/workspace/NYC_taxi_fare')
 
@@ -149,6 +206,7 @@ train_df <- worday_weekend_feature(train_df)
 train_df <- get_month_feature(train_df)
 #train_df <- log_amount(train_df)
 train_df <- get_only_manhattan_data(train_df)
+train_df <- classify_fare_amount(train_df)
 
 # select final year (check data for now I am taking this)
 train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30') 
@@ -164,47 +222,14 @@ plot_graphs(train_df, graph = 'fare_amount_hist')
 amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
       dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
+amount_formula2 = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-# shuffle the data 
-train_df <- train_df[sample(nrow(train_df)), ]
-nfolds <- 10 
-index <- rep(1:nfolds, length.out = nrow(train_df))
-test.rmse <- rep(0, nfolds)
-test.mse <- rep(0, nfolds)
+cross_validation(train_df, 'randomForest', amount_formula2, 'classifier')
+#cross_validation(train_df, 'randomForest', amount_formula, 'regression')
+#cross_validation(train_df, 'lm', amount_formula, 'regression')
+#cross_validation(train_df, 'tree', amount_formula2, 'regression')
 
-for(i in 1:nfolds){
-  insample  = which(index != i)
-  outsample = which(index == i)
- 
-  X_test <- train_df[insample, ]
-  X_train <- train_df[outsample, ]
-  
-  #amount_model <- tree(amount_formula, data = X_train)
-  #amount_model <- lm(amount_formula, data = X_train)
-  amount_model <- randomForest(amount_formula, X_train, ntree = 100, na.action = na.omit)
-  predictions_rf  <- predict(amount_model, X_test)
-  
-  amount_model <- tree(amount_formula, data = X_train)
-  predictions_tree  <- predict(amount_model, X_test)
-  
-  #test.rmse[i] =  RMSE(X_test$fare_amount, predictions) # mean squared test error
-  #test.mse[i] =  mean((X_test$fare_amount -  predictions)^2)
-  #train.rmse[i] = RMSE(X_train$fare_amount, predictions) # root meat squared 
-  print((amount_model))
-} 
-
-## Amount model plots 
-plot(amount_model)
-# plot(train.rmse) 
-#plot(test.rmse) 
-#plot(test.mse) 
-
-
-
-roc_rf <- roc(X_test$fare_amount, predictions_rf)
-roc_tree <- roc(X_test$fare_amount, predictions_tree)
-
-plot(roc_rf) + 
-  lines(roc_tree, col='red')
 # Get results from last cross validation and make a df 
-pred_df <- data.frame(true = X_test$fare_amount, preds = predictions_rf)
+pred_df <- data.frame(true = X_test$fare_amount_class, preds = predictions_rf)
+
