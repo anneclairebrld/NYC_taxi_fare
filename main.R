@@ -13,7 +13,7 @@ library(viridis)
 library(tidyverse)
 
 ## remove bad rows from initial dataset 
-remove_bad_rows <- function(df){
+remove_bad_rows2 <- function(df){
   # remove unfeasible rows for latitude and longitude
   df <- subset(df, !df$dropoff_latitude > 90)
   df <- subset(df, !df$pickup_latitude > 90)
