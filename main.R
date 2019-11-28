@@ -11,9 +11,10 @@ library(randomForest)
 library(pROC)
 library(viridis)
 library(tidyverse)
+library(ggthemes)
 
 ## remove bad rows from initial dataset 
-remove_bad_rows <- function(df){
+remove_bad_rows_1 <- function(df){
   # remove unfeasible rows for latitude and longitude
   df <- subset(df, !df$dropoff_latitude > 90)
   df <- subset(df, !df$pickup_latitude > 90)
@@ -144,7 +145,15 @@ plot_graphs <- function(df, graph = 'none'){
       geom_histogram(binwidth = 1)  +
       scale_x_continuous('Fare amount in dollars', limits = c(0, 60)) + 
       scale_y_continuous('Number of rides') + 
-      ggtitle('Histogram of taxi rides fare amount')
+      ggtitle('Histogram of taxi rides fare amount') +
+      theme_economist(base_size = 10, base_family = "sans", horizontal = TRUE, dkpanel = FALSE) +
+      theme(text = element_text(family = "'NimbusSan'"), #, color = "grey20"
+            plot.title = element_text(size=15),
+            axis.title.y = element_text(size=10),
+            axis.title.x = element_text(size=10),
+            axis.text.x = element_text(angle = 45),
+            legend.spacing.x = unit(0.5, 'cm')
+      )
   }
 }
 
@@ -227,8 +236,8 @@ regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + m
 classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
   dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-cross_validation(train_df, 'randomForest', classifier_amount_formula, 'classifier')
-#cross_validation(train_df, 'randomForest', regression_amount_formula, 'regression')
+#cross_validation(train_df, 'randomForest', classifier_amount_formula, 'classifier')
+cross_validation(train_df, 'randomForest', regression_amount_formula, 'regression')
 #cross_validation(train_df, 'lm', regression_amount_formula, 'regression')
 #cross_validation(train_df, 'tree', regression_amount_formula, 'regression')
 
