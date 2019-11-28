@@ -1,2 +1,14 @@
 
 data/
+
+.ipynb_checkpoints/
+
+.RData
+
+.Rhistory
+
+*.pper
+
+.Rproj.user/160AF38C/
+
+.Rproj.user/shared/notebooks/
