@@ -129,6 +129,23 @@ get_month_feature <- function(df){
   df$month_feature <- as.factor(month(df$pickup_date))
   return(df)
 }
+# get seasons from date
+get_season_feature <- function(df){
+  df$season_feature[as.factor(month(df$pickup_date))==12]<-'winter'
+  df$season_feature[as.factor(month(df$pickup_date))==1]<-'winter'
+  df$season_feature[as.factor(month(df$pickup_date))==2]<-'winter'
+  df$season_feature[as.factor(month(df$pickup_date))==3]<-'spring'
+  df$season_feature[as.factor(month(df$pickup_date))==4]<-'spring'
+  df$season_feature[as.factor(month(df$pickup_date))==5]<-'spring'
+  df$season_feature[as.factor(month(df$pickup_date))==6]<-'summer'
+  df$season_feature[as.factor(month(df$pickup_date))==7]<-'summer'
+  df$season_feature[as.factor(month(df$pickup_date))==8]<-'summer'
+  df$season_feature[as.factor(month(df$pickup_date))==9]<-'fall'
+  df$season_feature[as.factor(month(df$pickup_date))==10]<-'fall'
+  df$season_feature[as.factor(month(df$pickup_date))==11]<-'fall'
+  return(df)
+}
+
 
 # round time to nearest hour 
 round_to_hour <- function(df){
@@ -256,6 +273,7 @@ train_df <- get_day_of_week(train_df)
 train_df <- round_to_hour(train_df)
 train_df <- worday_weekend_feature(train_df)
 train_df <- get_month_feature(train_df)
+train_df <- get_season_feature(train_df)
 #train_df <- log_amount(train_df)
 train_df <- get_only_manhattan_data(train_df)
 train_df <- classify_fare_amount(train_df)
