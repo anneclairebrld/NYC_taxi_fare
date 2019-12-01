@@ -16,6 +16,8 @@ library(gmapsdistance)
 library(ggmap)
 library(leaflet)
 library(stringr)
+library(ggExtra)
+library(xgboost)
 
 Sys.setenv(TZ='UTC')
 
@@ -38,6 +40,38 @@ remove_bad_rows <- function(df){
   df <- subset(df, !df$fare_amount <= 0)
   
   return(df)
+}
+
+remove_zero_distance <- function(df){
+  # remove rows with distance  equal to 0
+  df <- subset(df, !df$distance_kms == 0)
+  return(df)
+}
+
+
+week_within_month <- function(df) {
+  df$week_within_month <- (((as.integer(df$day_feature) - 1)%/%7)+1)
+  
+  return(df)
+}
+
+
+add_NY_holidays <- function(df) {
+  df$holiday = 0
+  df[df$month_feature==1 & df$day_feature == 1,]$holiday = 1       # New Year
+  df[df$month_feature== 1  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1  # Martin Luther King day
+  df[df$month_feature==2 & df$day_feature == 12,]$holiday = 1      # Lincoln's day (float)
+  df[df$month_feature== 2  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1   # Washington's day
+  df[df$month_feature == 5 & df$weekday == "Monday" & df$month_feature == 4, ]$holiday = 1       # Memorial day (last Monday)
+  df[df$month_feature==7 & df$day_feature == 4,]$holiday = 1       # Independence day
+  df[df$month_feature== 9  &  df$week_within_month == 1 & df$weekday == "Monday",]$holiday = 1   # Labor Day
+  df[df$month_feature==10 &  df$week_within_month == 2 & df$weekday == "Monday",]$holiday = 1   # Columbus day
+  df[df$month_feature==11 & df$day_feature == 11,]$holiday = 1     # Veteran's day
+  df[df$month_feature==11 &  df$week_within_month == 4 & df$weekday == "Thursday",]$holiday = 1       # Thanksgiving
+  df[df$month_feature==12 & df$day_feature == 25,]$holiday = 1    # Christmas
+  
+  return(df)
+  
 }
 
 # separate date and time 
@@ -107,6 +141,13 @@ compute_distance <- function(df, type='euclidean'){
   }
 }
 
+# compute fare per km
+compute_fare_per_km <- function(df) {
+  df$fare_per_km <- df$fare_amount/df$distance_kms
+  return(df)
+}
+
+
 # get day of week from date
 get_day_of_week <- function(df){
   df$weekday <- weekdays(as.POSIXct(df$pickup_date), abbreviate = F)
@@ -124,11 +165,15 @@ worday_weekend_feature <- function(df){
   return(df)
 }
 
-# get month and make it factor i.e. a month is a class
-get_month_feature <- function(df){
+
+# get month, day and make it factor i.e. a month is a class
+get_month_day_feature <- function(df){
   df$month_feature <- as.factor(month(df$pickup_date))
+  df$day_feature  <- as.factor(day(df$pickup_date))
   return(df)
 }
+
+
 # get seasons from date
 get_season_feature <- function(df){
   df$season_feature[as.factor(month(df$pickup_date))==12]<-'winter'
@@ -213,6 +258,28 @@ plot_graphs <- function(df, graph = 'none'){
             legend.spacing.x = unit(0.5, 'cm')
       )
   }
+  else if (graph == 'Histogram of Euclidean distance') {
+    ggplot(df, aes(x=distance_kms)) + geom_histogram(binwidth=1)+
+      scale_x_continuous(name="Distance in kms", limits=c(0, 50)) +
+      ggtitle('Histogram of Euclidean distance')
+  }
+  else if (graph == 'Scatter Plot Distance Fare Amount' ) {
+    ggplot(df, aes(x=distance_kms, y=fare_amount)) + geom_point() +
+      geom_smooth(method="loess", se=F)
+  }
+  else if (graph == 'Fare per km plot')  {
+    ggplot(df, aes(x=fare_per_km)) + geom_histogram(binwidth=0.5)+
+      scale_x_continuous(name="Average fare", limits=c(0, 30)) +
+      ggtitle('Fare per km plot');
+  }
+  else if (graph == 'Average price per km')  {
+    ggplot(df, aes(x=distance_kms, y=fare_per_km)) + geom_point() + ggtitle('Average price per km')
+    
+  }
+  else if (graph == 'Marginal representation avg fare distance') {
+    g <- ggplot(df, aes(distance_kms, fare_per_km)) + geom_count() 
+    ggMarginal(g, type = "histogram", fill="transparent")
+  }
 }
 
 cross_validation <- function(df, model, formula, model_type, nfolds=10) {
@@ -227,8 +294,14 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
     insample  = which(index != i)
     outsample = which(index == i)
     
-    X_test <- df[insample, ]
-    X_train <- df[outsample, ]
+    X_train <- df[insample, ]
+    X_test  <- df[outsample, ]
+    
+    if (model == 'XGBoost') {
+      labels =  X_train$fare_per_km
+      ind_var = X_train$distance_kms
+      XGB_regression <- xgb.DMatrix(data = as.matrix(ind_var),label = labels)
+    }
     
     if(model == 'randomForest'){
       amount_model<- randomForest(formula, X_train, ntree = 100, na.action = na.omit)
@@ -236,6 +309,15 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       amount_model <- tree(formula, data = X_train)
     }else if (model == 'lm'){
       amount_model <- lm(formula, data = X_train)
+    }else if (model == 'XGBoost'){
+      params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.3, gamma=0, max_depth=9, min_child_weight=1, 
+                     subsample=1, colsample_bytree=1)  
+      amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
+                                 print_every_n = 5,maximize = T , eval_metric = "rmse") 
+      target =  X_test$fare_per_km
+      test_ind_var = X_test$distance_kms
+      X_test_cor_form = X_test
+      X_test = xgb.DMatrix(data = as.matrix(test_ind_var))
     }
   
     predictions  <- predict(amount_model, X_test)
@@ -247,7 +329,12 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       print((amount_model$confusion))
       print(cm$overall)
     }else {
-      target <- X_test$fare_amount
+      if (model == 'XGBoost') {        # X_test is xgbmatrix and target variable is amount per_km
+        target = target
+      }
+      else {
+        target <- X_test$fare_amount
+      }
       test.rmse[i] =  RMSE(target, predictions)
       test.mse[i] =  mean((target -  predictions)^2)
       cat(c('RMSE: ', test.rmse[i], ' MSE: ', test.mse[i], '\n'))
@@ -269,14 +356,18 @@ head(train_df)
 train_df <- remove_bad_rows(train_df)
 train_df <- date_time_features(train_df)
 train_df <- compute_distance(train_df)
+train_df <- remove_zero_distance(train_df)
 train_df <- get_day_of_week(train_df)
 train_df <- round_to_hour(train_df)
 train_df <- worday_weekend_feature(train_df)
-train_df <- get_month_feature(train_df)
+train_df <- get_month_day_feature(train_df)
+train_df <- week_within_month(train_df)
 train_df <- get_season_feature(train_df)
 #train_df <- log_amount(train_df)
 train_df <- get_only_manhattan_data(train_df)
 train_df <- classify_fare_amount(train_df)
+train_df <- compute_fare_per_km(train_df)
+train_df <- add_NY_holidays(train_df)
 
 # select final year (check data for now I am taking this)
 train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30') 
@@ -287,6 +378,19 @@ head(train_df)
 
 # specify which graph you want to plot if any
 plot_graphs(train_df, graph = 'fare_amount_hist')
+plot_graphs(train_df, graph = 'Histogram of Euclidean distance')
+plot_graphs(train_df, graph = 'Scatter Plot Distance Fare Amount')
+plot_graphs(train_df, graph = 'Fare per km plot')
+plot_graphs(train_df, graph = 'Average price per km')
+plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
+
+
+## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
+cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression')
+
+
+## CLUSTERING ON ON AVG_FARE_PER_KM ---------------------------------------------------------------       
+
 
 ## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
 regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
