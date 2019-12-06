@@ -489,11 +489,17 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10, boost_ty
 
 #------------------------------------------------------------------------------------------------
 
-# Set working directory (this is different for everyone)
+# set working dir to my file 
 setwd('~/workspace/NYC_taxi_fare')
-#setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
 
 train_df <- read.csv(file = './data/data.csv')
+
+setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
+train_df <- read.csv(file = './fares2010.csv')
+# # read data, choose subset 
+# train_df <- read.csv(file = './data/train.csv', nrows=100000) 
+head(train_df)
+
 
 # Feature engineering ---------------------------------------------------------------------------
 train_df <- remove_bad_rows(train_df)
@@ -570,10 +576,15 @@ cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
 #  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour + workday +month_feature + day_feature + week_within_month +season_feature - 
 #  fare_amount_class - fare_per_km + countdown
 
-#regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  passenger_count + pickup_hour +
-#  week_within_month + distance_kms + countdown + spring + summer + winter +  df.weekday.Friday + 
-#  df.weekday.Monday +  df.weekday.Saturday + df.weekday.Sunday +  df.weekday.Thursday + df.weekday.Tuesday + df.weekday.Wednesday + 
-#  dropoff_longitude + dropoff_latitude + workday + month_feature + countdown
+## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
+col_names = names(train_df)
+# col_names[3:length(col_names)]
+train_df2 = select(train_df, col_names[3:length(col_names)])
+
+train_df %>% select(fare_amount, distance_kms, month_feature)
+
+regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
 regression_amount_formula = log(fare_amount) ~ pickup_latitude + pickup_longitude + month_feature + weekday + 
   passenger_count + pickup_hour + workday  + week_within_month + season_feature+ distance_kms
