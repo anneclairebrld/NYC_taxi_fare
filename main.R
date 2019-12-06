@@ -78,6 +78,7 @@ add_NY_holidays <- function(df) {
   df[df$month_feature==11 &  df$week_within_month == 4 & df$weekday == "Thursday",]$holiday = 1       # Thanksgiving
   df[df$month_feature==12 & df$day_feature == 25,]$holiday = 1    # Christmas
   
+  return(df)
 }
 
 countdown_holidays <- function(df, holiday_date) {  # input mia imerominia kai tha vriskei +- 3
@@ -202,7 +203,7 @@ get_day_of_week <- function(df){
 worday_weekend_feature <- function(df){
   df$workday <- 1 
   df$workday[df$weekday %in% c('Saturday', 'Sunday')] <- 0
-  df$workday <- as.factor(df$workday)
+  #df$workday <- as.factor(df$workday)
   
   return(df)
 }
@@ -210,8 +211,10 @@ worday_weekend_feature <- function(df){
 
 # get month, day and make it factor i.e. a month is a class
 get_month_day_feature <- function(df){
-  df$month_feature <- as.factor(month(df$pickup_date))
-  df$day_feature  <- as.factor(day(df$pickup_date))
+  #df$month_feature <- as.factor(month(df$pickup_date))
+  #df$day_feature  <- as.factor(day(df$pickup_date))
+  df$month_feature <- month(df$pickup_date)
+  df$day_feature  <- day(df$pickup_date)
   return(df)
 }
 
@@ -247,7 +250,7 @@ round_to_hour <- function(df){
 classify_fare_amount <- function(df) {
   df$fare_amount <- as.numeric(df$fare_amount)
   df <- df %>% mutate(fare_amount_class = case_when(
-    between(fare_amount, 0, 3) ~ '0-5',
+    between(fare_amount, 0, 5) ~ '0-5',
     between(fare_amount, 5, 10) ~ '5-10',
     between(fare_amount, 10, 15) ~ '10-15',
     between(fare_amount, 15, 20) ~ '15-20', 
@@ -285,7 +288,7 @@ encode_weekday <- function(df){
   df$weekday <- NULL
   return(df)
 }
-encode_weekday(train_df)
+
 
 #encode & drop season
 encode_season <- function(df){
@@ -362,10 +365,16 @@ plot_graphs <- function(df, graph = 'none'){
   else if (graph == 'Marginal representation avg fare distance') {
     g <- ggplot(df, aes(distance_kms, fare_per_km)) + geom_count() 
     ggMarginal(g, type = "histogram", fill="transparent")
+  }else if (graph == 'Results, scatter_plot_true_vs_preds'){
+    ggplot(df, aes(x = as.numeric(true_val), y = as.numeric(Predictions))) +
+      geom_point() + 
+      scale_x_continuous('True value') + 
+      scale_y_continuous('Predictions') + 
+      geom_smooth(method = lm)
   }
 }
 
-cross_validation <- function(df, model, formula, model_type, nfolds=10) {
+cross_validation <- function(df, model, formula, model_type, nfolds=10, boost_type = 'fare_per_km') {
   if(model_type == 'regression'){
     test.rmse <- rep(0, nfolds)
     test.mse <- rep(0, nfolds)
@@ -383,19 +392,44 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
     X_train <- df[insample, ]
     X_test  <- df[outsample, ]
     
-    if (model == 'XGBoost') {
+    if (model == 'XGBoost' && boost_type == 'fare_per_km') {
       labels =  X_train$fare_per_km
       ind_var = X_train$distance_kms
       XGB_regression <- xgb.DMatrix(data = as.matrix(ind_var),label = labels)
     }
+    else if (model == 'XGBoost' & boost_type != 'fare_per_km'){
+      labels = as.numeric(X_train$fare_amount)
+      ind_var = select(X_train, 'pickup_latitude', 'pickup_longitude', 'month_feature', 'passenger_count', 'pickup_hour',
+                                                'week_within_month', 'distance_kms', 'countdown', 'spring', 'summer', 'winter',  'df.weekday.Friday', 
+                                                'df.weekday.Monday',  'df.weekday.Saturday', 'df.weekday.Sunday',  'df.weekday.Thursday', 
+                                                'df.weekday.Tuesday', 'df.weekday.Wednesday', 'dropoff_longitude', 'dropoff_latitude', 'workday', 'month_feature', 'holiday')
+   
+      XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var, as.numeric)), label = labels)
+      
+      
+      target =  as.numeric(X_test$fare_amount)
+      test_ind_var = select(X_test, 'pickup_latitude', 'pickup_longitude', 'month_feature',  'passenger_count', 'pickup_hour',
+                                                   'week_within_month', 'distance_kms', 'countdown', 'spring', 'summer', 'winter',  'df.weekday.Friday', 
+                                                   'df.weekday.Monday',  'df.weekday.Saturday', 'df.weekday.Sunday',  'df.weekday.Thursday', 'df.weekday.Tuesday', 'df.weekday.Wednesday', 
+                            'dropoff_longitude', 'dropoff_latitude', 'workday', 'month_feature', 'holiday')
+      X_test_cor_form = X_test
+      X_test = xgb.DMatrix(data = as.matrix(sapply(test_ind_var, as.numeric)))
+      
+      params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.4, gamma=0.1, max_depth=15, min_child_weight=1, 
+                     subsample=1, colsample_bytree=1)  
+      amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
+                                 print_every_n = 5,maximize = T , eval_metric = "rmse") 
+    }
     
     if(model == 'randomForest'){
-      amount_model<- randomForest(formula, X_train, ntree = 100, na.action = na.omit)
+      amount_model <- randomForest(formula, X_train, ntree = 10, na.action = na.omit)
     }else if (model == 'tree'){
       amount_model <- tree(formula, data = X_train)
     }else if (model == 'lm'){
       amount_model <- lm(formula, data = X_train)
-    }else if (model == 'XGBoost'){
+      target <- X_test$fare_amount
+    }else if (model == 'XGBoost' && boost_type == 'fare_per_km'){
+      print('in correct boost 2')
       params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.3, gamma=0, max_depth=9, min_child_weight=1, 
                      subsample=1, colsample_bytree=1)  
       amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
@@ -405,7 +439,7 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       X_test_cor_form = X_test
       X_test = xgb.DMatrix(data = as.matrix(test_ind_var))
     }
-    
+
     predictions  <- predict(amount_model, X_test)
     
     if(model_type == 'classifier') {
@@ -415,6 +449,7 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       print((amount_model$confusion))
       print(cm$overall)
     }else {
+      cat('evals')
       if (model == 'XGBoost') {        # X_test is xgbmatrix and target variable is amount per_km
         target = target
       }
@@ -440,22 +475,25 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
   avg_rmse = sum_rmse / nfolds
   cat(avg_rmse, min_rmse, max_rmse)
   }
+  
+  if(model == 'XGBoost'){
+    preds_df <- data.frame('Predictions' = predictions, 'true_val'= target)
+  }else{
+    preds_df <- data.frame('Predictions' = predictions, 'true_val'= X_test$fare_amount)
+  }
+  
+  return(preds_df)
 }
 
 
 
 #------------------------------------------------------------------------------------------------
 
-# set working dir to my file 
+# Set working directory (this is different for everyone)
 setwd('~/workspace/NYC_taxi_fare')
+#setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
 
-
-setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
-train_df <- read.csv(file = './fares2010.csv')
-# # read data, choose subset 
-# train_df <- read.csv(file = './data/train.csv', nrows=100000) 
-head(train_df)
-
+train_df <- read.csv(file = './data/data.csv')
 
 # Feature engineering ---------------------------------------------------------------------------
 train_df <- remove_bad_rows(train_df)
@@ -467,46 +505,48 @@ train_df <- round_to_hour(train_df)
 train_df <- worday_weekend_feature(train_df)
 train_df <- get_month_day_feature(train_df)
 train_df <- week_within_month(train_df)
+
 train_df <- get_season_feature(train_df)
 #train_df <- log_amount(train_df)
 train_df <- get_only_manhattan_data(train_df)
 train_df <- classify_fare_amount(train_df)
 train_df <- compute_fare_per_km(train_df)
-train_df <- add_NY_holidays(train_df)
-train_df <- remove_large_fare_per_km(train_df, 20)
 
 ny_holidays_2014 = c('2014-01-01', 
                      '2014-01-20', '2014-02-12', '2014-02-17', '2014-05-26', '2014-07-04',
                      '2014-09-01', '2014-11-11', '2014-11-27', '2014-12-25')
-  
+
+train_df <- add_NY_holidays(train_df)
+train_df <- remove_large_fare_per_km(train_df, 20)
+
 
 train_df$countdown = 0     # initialise new column
 for(j in 1:length(ny_holidays_2014)){
   train_df = countdown_holidays(train_df, ny_holidays_2014[j])
 }
 
-# select final year (check data for now I am taking this)
-train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30') 
 
-# remove redundant columns
+# Remove redundant columns
 train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
+train_df = train_df[train_df$pickup_date < as.Date('2015-01-01'), ]
 head(train_df)
 
-#encoding if necessary
-#train_df <- encode_weekday(train_df)
-#train_df <- encode_season(train_df)
+# One-hot Encoding
+train_df <- encode_weekday(train_df)
+train_df <- encode_season(train_df)
+
+## PLOTTING GRAPHS --------------------------------------------------------------------------------
 
 # specify which graph you want to plot if any
-plot_graphs(train_df, graph = 'fare_amount_hist')
-plot_graphs(train_df, graph = 'Histogram of Euclidean distance')
-plot_graphs(train_df, graph = 'Scatter Plot Distance Fare Amount')
-plot_graphs(train_df, graph = 'Fare per km plot')
-plot_graphs(train_df, graph = 'Average price per km')
-plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
-
+#plot_graphs(train_df, graph = 'fare_amount_hist')
+#plot_graphs(train_df, graph = 'Histogram of Euclidean distance')
+#plot_graphs(train_df, graph = 'Scatter Plot Distance Fare Amount')
+#plot_graphs(train_df, graph = 'Fare per km plot')
+#plot_graphs(train_df, graph = 'Average price per km')
+#plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
 
 ## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
-cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression')
+cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression',  boost_type = 'fare_per_km')
 
 regression_fare_per_km_formula = fare_per_km ~ distance_kms
 classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
@@ -519,25 +559,37 @@ fare_per_km_formula = fare_per_km ~ pickup_latitude + pickup_longitude +
   dropoff_longitude + dropoff_latitude + passenger_count + distance_kms
 
 cross_validation(train_df, 'randomForest', fare_per_km_formula, 'regression')
+
 cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
 
 
-## CLUSTERING ON ON AVG_FARE_PER_KM ---------------------------------------------------------------       
-
-
 ## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
-regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
-  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
+
+# train_df=train_df %>% mutate_if(is.character, as.numeric)
+#regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+#  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour + workday +month_feature + day_feature + week_within_month +season_feature - 
+#  fare_amount_class - fare_per_km + countdown
+
+#regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  passenger_count + pickup_hour +
+#  week_within_month + distance_kms + countdown + spring + summer + winter +  df.weekday.Friday + 
+#  df.weekday.Monday +  df.weekday.Saturday + df.weekday.Sunday +  df.weekday.Thursday + df.weekday.Tuesday + df.weekday.Wednesday + 
+#  dropoff_longitude + dropoff_latitude + workday + month_feature + countdown
+
+regression_amount_formula = log(fare_amount) ~ pickup_latitude + pickup_longitude + month_feature + weekday + 
+  passenger_count + pickup_hour + workday  + week_within_month + season_feature+ distance_kms
 
 classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
-  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
+  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour + distance_kms
 
 #cross_validation(train_df, 'randomForest', classifier_amount_formula, 'classifier')
-cross_validation(train_df, 'randomForest', regression_amount_formula, 'regression')
-#cross_validation(train_df, 'lm', regression_amount_formula, 'regression')
+#preds_df <- cross_validation(train_df, 'randomForest', regression_amount_formula, 'regression')
+#preds_df <- cross_validation(train_df, 'lm', regression_amount_formula, 'regression')
 #cross_validation(train_df, 'tree', regression_amount_formula, 'regression')
 
-# Get results from last cross validation and make a df 
-pred_df <- data.frame(true = X_test$fare_amount_class, preds = predictions_rf)
+# Model on everything
+preds_df <- cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression', boost_type = 'second_type')
+
+## PLOTTING RESULTS --------------------------------------------------------------------------------------------------------------
+plot_graphs(preds_df, 'Results, scatter_plot_true_vs_preds')
 
 
