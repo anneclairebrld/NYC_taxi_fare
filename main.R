@@ -33,13 +33,21 @@ remove_bad_rows <- function(df){
   df <- subset(df, !df$pickup_latitude < -90)
   df <- subset(df, !df$dropoff_latitude < -90)
  
-  # remove rows for passengers = 0 
+# remove rows for passengers = 0 
   df <- subset(df, !df$passenger_count == 0)
   
-  # remove rows when the price is negative (corresponds to refund)
+# remove rows when the price is negative (corresponds to refund)
   df <- subset(df, !df$fare_amount <= 0)
   
   return(df)
+}
+
+
+# remove rows when fare_per_km is larger than 100
+remove_large_fare_per_km <- function(df, limit) {
+df <- subset(df, !df$fare_per_km >= limit)
+
+return(df)
 }
 
 remove_zero_distance <- function(df){
@@ -62,7 +70,7 @@ add_NY_holidays <- function(df) {
   df[df$month_feature== 1  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1  # Martin Luther King day
   df[df$month_feature==2 & df$day_feature == 12,]$holiday = 1      # Lincoln's day (float)
   df[df$month_feature== 2  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1   # Washington's day
-  df[df$month_feature == 5 & df$weekday == "Monday" & df$month_feature == 4, ]$holiday = 1       # Memorial day (last Monday)
+  df[df$month_feature == 5 & df$weekday == "Monday" , ]$holiday = 1       # Memorial day (last Monday)
   df[df$month_feature==7 & df$day_feature == 4,]$holiday = 1       # Independence day
   df[df$month_feature== 9  &  df$week_within_month == 1 & df$weekday == "Monday",]$holiday = 1   # Labor Day
   df[df$month_feature==10 &  df$week_within_month == 2 & df$weekday == "Monday",]$holiday = 1   # Columbus day
@@ -73,6 +81,42 @@ add_NY_holidays <- function(df) {
   return(df)
   
 }
+
+countdown_holidays <- function(df, holiday_date) {  # input mia imerominia kai tha vriskei +- 3
+  hol_day = day(as.Date(holiday_date))
+  hol_month = month(as.Date(holiday_date))
+  for(i in (hol_day - 3):(hol_day - 1)){
+    cat(sprintf("\"%f\" \"%f\"\n", i, hol_month))
+    if (i== 0) {
+      if(hol_month > 1) {
+        df[df$month_feature== (hol_month-1)  &  df$day_feature == 31,]$countdown = 1
+      }
+      # if month == 1, we should go to the previous year, one year data in our case
+    }
+    else if (i== -1) {
+      if(hol_month > 1) {
+        df[df$month_feature== (hol_month-1)  &  df$day_feature == 30,]$countdown = 1
+      }
+    }
+    else if (i== -2) {
+      if(hol_month > 1) {
+        df[df$month_feature== (hol_month-1)  &  df$day_feature == 29,]$countdown = 1
+      }
+    }
+    else {
+      if(hol_month > 1) {
+        df[df$month_feature== hol_month  &  df$day_feature == i,]$countdown = 1
+      }
+    }
+  }
+  for(i in (hol_day+1):(hol_day+3)){
+    cat(sprintf("\"%f\" \"%f\"\n", i, hol_month))
+    df[df$month_feature== hol_month  &  df$day_feature == i,]$countdown = 1
+  }  
+  
+  return(df)
+}
+
 
 # separate date and time 
 date_time_features <- function(df){
@@ -269,7 +313,7 @@ plot_graphs <- function(df, graph = 'none'){
   }
   else if (graph == 'Fare per km plot')  {
     ggplot(df, aes(x=fare_per_km)) + geom_histogram(binwidth=0.5)+
-      scale_x_continuous(name="Average fare", limits=c(0, 30)) +
+      scale_x_continuous(name="Fare per km", limits=c(0, 100)) +
       ggtitle('Fare per km plot');
   }
   else if (graph == 'Average price per km')  {
@@ -290,6 +334,9 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
   df <- df[sample(nrow(df)), ]
   index <- rep(1:nfolds, length.out = nrow(df))
   
+  sum_rmse = 0
+  max_rmse = 0
+  min_rmse = 100                         # random variable for initialisation 
   for(i in 1:nfolds){
     insample  = which(index != i)
     outsample = which(index == i)
@@ -338,17 +385,36 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       test.rmse[i] =  RMSE(target, predictions)
       test.mse[i] =  mean((target -  predictions)^2)
       cat(c('RMSE: ', test.rmse[i], ' MSE: ', test.mse[i], '\n'))
+      sum_rmse =  sum_rmse + test.rmse[i]
+      if (i == 1) {
+        min = test.rmse[i]                    # min initialisation
+      }
+      if (test.rmse[i] < min_rmse) {
+        min_rmse = test.rmse[i]
+      }
+      if (test.rmse[i] > max_rmse) {
+        max_rmse = test.rmse[i]
+      }
     }
-  } 
+  }
+  if (model == 'XGBoost') {
+  avg_rmse = sum_rmse / nfolds
+  cat(avg_rmse, min_rmse, max_rmse)
+  }
 }
+
+
 
 #------------------------------------------------------------------------------------------------
 
 # set working dir to my file 
 setwd('~/workspace/NYC_taxi_fare')
 
-# read data, choose subset 
-train_df <- read.csv(file = './data/train.csv', nrows=100000) 
+
+setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
+train_df <- read.csv(file = './fares2010.csv')
+# # read data, choose subset 
+# train_df <- read.csv(file = './data/train.csv', nrows=100000) 
 head(train_df)
 
 
@@ -368,6 +434,17 @@ train_df <- get_only_manhattan_data(train_df)
 train_df <- classify_fare_amount(train_df)
 train_df <- compute_fare_per_km(train_df)
 train_df <- add_NY_holidays(train_df)
+train_df <- remove_large_fare_per_km(train_df, 20)
+
+ny_holidays_2014 = c('2014-01-01', 
+                     '2014-01-20', '2014-02-12', '2014-02-17', '2014-05-26', '2014-07-04',
+                     '2014-09-01', '2014-11-11', '2014-11-27', '2014-12-25')
+  
+
+train_df$countdown = 0     # initialise new column
+for(j in 1:length(ny_holidays_2014)){
+  train_df = countdown_holidays(train_df, ny_holidays_2014[j])
+}
 
 # select final year (check data for now I am taking this)
 train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30') 
@@ -387,6 +464,10 @@ plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
 
 ## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
 cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression')
+
+regression_fare_per_km_formula = fare_per_km ~ distance_kms
+
+cross_validation(train_df, 'randomForest', regression_fare_per_km_formula, 'regression')
 
 
 ## CLUSTERING ON ON AVG_FARE_PER_KM ---------------------------------------------------------------       
