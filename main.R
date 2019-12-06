@@ -78,6 +78,8 @@ add_NY_holidays <- function(df) {
   df[df$month_feature==11 &  df$week_within_month == 4 & df$weekday == "Thursday",]$holiday = 1       # Thanksgiving
   df[df$month_feature==12 & df$day_feature == 25,]$holiday = 1    # Christmas
   
+  return(df)
+  
 }
 
 countdown_holidays <- function(df, holiday_date) {  # input mia imerominia kai tha vriskei +- 3
@@ -447,11 +449,11 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
 #------------------------------------------------------------------------------------------------
 
 # set working dir to my file 
-setwd('~/workspace/NYC_taxi_fare')
+# setwd('~/workspace/NYC_taxi_fare')
 
 
 setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
-train_df <- read.csv(file = './fares2010.csv')
+train_df <- read.csv(file = './faresnew2014.csv')
 # # read data, choose subset 
 # train_df <- read.csv(file = './data/train.csv', nrows=100000) 
 head(train_df)
@@ -526,6 +528,12 @@ cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
 
 
 ## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
+col_names = names(train_df)
+# col_names[3:length(col_names)]
+train_df2 = select(train_df, col_names[3:length(col_names)])
+
+train_df %>% select(fare_amount, distance_kms, month_feature)
+
 regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
   dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
