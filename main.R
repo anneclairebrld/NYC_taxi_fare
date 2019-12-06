@@ -1,5 +1,5 @@
-library(readr)
 library(dplyr)
+library(readr)
 library(rgdal)
 library(geosphere)
 library(ggplot2)
@@ -18,7 +18,7 @@ library(leaflet)
 library(stringr)
 library(ggExtra)
 library(xgboost)
-
+library(tidyverse)
 Sys.setenv(TZ='UTC')
 
 ## remove bad rows from initial dataset 
@@ -32,12 +32,20 @@ remove_bad_rows <- function(df){
   df <- subset(df, !df$dropoff_longitude > 180)
   df <- subset(df, !df$pickup_latitude < -90)
   df <- subset(df, !df$dropoff_latitude < -90)
- 
+  
   # remove rows for passengers = 0 
   df <- subset(df, !df$passenger_count == 0)
   
   # remove rows when the price is negative (corresponds to refund)
   df <- subset(df, !df$fare_amount <= 0)
+  
+  return(df)
+}
+
+
+# remove rows when fare_per_km is larger than 100
+remove_large_fare_per_km <- function(df) {
+  df <- subset(df, !df$fare_per_km >= 20)
   
   return(df)
 }
@@ -57,20 +65,20 @@ week_within_month <- function(df) {
 
 
 add_NY_holidays <- function(df) {
-  df$holiday = 0
-  df[df$month_feature==1 & df$day_feature == 1,]$holiday = 1       # New Year
-  df[df$month_feature== 1  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1  # Martin Luther King day
-  df[df$month_feature==2 & df$day_feature == 12,]$holiday = 1      # Lincoln's day (float)
-  df[df$month_feature== 2  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1   # Washington's day
-  df[df$month_feature == 5 & df$weekday == "Monday" & df$month_feature == 4, ]$holiday = 1       # Memorial day (last Monday)
-  df[df$month_feature==7 & df$day_feature == 4,]$holiday = 1       # Independence day
-  df[df$month_feature== 9  &  df$week_within_month == 1 & df$weekday == "Monday",]$holiday = 1   # Labor Day
-  df[df$month_feature==10 &  df$week_within_month == 2 & df$weekday == "Monday",]$holiday = 1   # Columbus day
-  df[df$month_feature==11 & df$day_feature == 11,]$holiday = 1     # Veteran's day
-  df[df$month_feature==11 &  df$week_within_month == 4 & df$weekday == "Thursday",]$holiday = 1       # Thanksgiving
-  df[df$month_feature==12 & df$day_feature == 25,]$holiday = 1    # Christmas
-  
-  return(df)
+    df$holiday = 0
+    df[df$month_feature==1 & df$day_feature == 1,]$holiday = 1       # New Year
+    df[df$month_feature== 1  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1  # Martin Luther King day
+    df[df$month_feature==2 & df$day_feature == 12,]$holiday = 1      # Lincoln's day (float)
+    df[df$month_feature== 2  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1   # Washington's day
+    df[df$month_feature == 5 & df$weekday == "Monday" , ]$holiday = 1       # Memorial day (last Monday)
+    df[df$month_feature==7 & df$day_feature == 4,]$holiday = 1       # Independence day
+    df[df$month_feature== 9  &  df$week_within_month == 1 & df$weekday == "Monday",]$holiday = 1   # Labor Day
+    df[df$month_feature==10 &  df$week_within_month == 2 & df$weekday == "Monday",]$holiday = 1   # Columbus day
+    df[df$month_feature==11 & df$day_feature == 11,]$holiday = 1     # Veteran's day
+    df[df$month_feature==11 &  df$week_within_month == 4 & df$weekday == "Thursday",]$holiday = 1       # Thanksgiving
+    df[df$month_feature==12 & df$day_feature == 25,]$holiday = 1    # Christmas
+    
+    return(df)
   
 }
 
@@ -99,7 +107,7 @@ routing_features <- function(df){
                                     as.character(df$pickup_longitude)),
                               " ",
                               "")
-
+  
   df$dropoff = str_replace_all(paste(as.character(df$dropoff_latitude),
                                      "+", 
                                      as.character(df$dropoff_longitude)),
@@ -223,6 +231,47 @@ log_amount <- function(df){
   return(df)
 }
 
+#encode & drop weekday
+encode_weekday <- function(df){
+  weekday1 <- data.frame(df$X, df$weekday)
+  weekday2 <- dummyVars("~ .", data = weekday1)
+  weekday3 <- data.frame(predict(weekday2, newdata = weekday1))
+  names(weekday3)[names(weekday3) == "df.X"] <- "X"
+  names(weekday3)[names(weekday3) == "df.weekday.Lundi"] <- "Monday"
+  names(weekday3)[names(weekday3) == "df.weekday.Mardi"] <- "Tuesday"
+  names(weekday3)[names(weekday3) == "df.weekday.Mercredi"] <- "Wednesday"
+  names(weekday3)[names(weekday3) == "df.weekday.Jeudi"] <- "Thursday"
+  names(weekday3)[names(weekday3) == "df.weekday.Vendredi"] <- "Friday"
+  names(weekday3)[names(weekday3) == "df.weekday.Samedi"] <- "Saturday"
+  names(weekday3)[names(weekday3) == "df.weekday.Dimanche"] <- "Sunday"
+  df <-merge(df,weekday3, by.x = 'X',by.y='X')
+  rm(weekday1)
+  rm(weekday2)
+  rm(weekday3)
+  df$weekday <- NULL
+  return(df)
+}
+encode_weekday(train_df)
+
+#encode & drop season
+encode_season <- function(df){
+  season1 <- data.frame(df$X, df$season_feature)
+  season2 <- dummyVars("~ .", data = season1)
+  season3 <- data.frame(predict(season2, newdata = season1))
+  names(season3)[names(season3) == "df.X"] <- "X"
+  names(season3)[names(season3) == "df.season_feature.summer"] <- "summer"
+  names(season3)[names(season3) == "df.season_feature.winter"] <- "winter"
+  names(season3)[names(season3) == "df.season_feature.spring"] <- "spring"
+  names(season3)[names(season3) == "df.season_feature.fall"] <- "fall"
+  df <-merge(df,season3, by.x = 'X',by.y='X')
+  rm(season1)
+  rm(season2)
+  rm(season3)
+  df$season_feature <- NULL
+  return(df)
+}
+
+
 # heat map plotting 
 plot_heat_map <- function(df){
   # get map of manhattan 
@@ -269,7 +318,7 @@ plot_graphs <- function(df, graph = 'none'){
   }
   else if (graph == 'Fare per km plot')  {
     ggplot(df, aes(x=fare_per_km)) + geom_histogram(binwidth=0.5)+
-      scale_x_continuous(name="Average fare", limits=c(0, 30)) +
+      scale_x_continuous(name="Fare per km", limits=c(0, 100)) +
       ggtitle('Fare per km plot');
   }
   else if (graph == 'Average price per km')  {
@@ -290,6 +339,9 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
   df <- df[sample(nrow(df)), ]
   index <- rep(1:nfolds, length.out = nrow(df))
   
+  sum_rmse = 0
+  max_rmse = 0
+  min_rmse = 0
   for(i in 1:nfolds){
     insample  = which(index != i)
     outsample = which(index == i)
@@ -319,7 +371,7 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       X_test_cor_form = X_test
       X_test = xgb.DMatrix(data = as.matrix(test_ind_var))
     }
-  
+    
     predictions  <- predict(amount_model, X_test)
     
     if(model_type == 'classifier') {
@@ -338,8 +390,17 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
       test.rmse[i] =  RMSE(target, predictions)
       test.mse[i] =  mean((target -  predictions)^2)
       cat(c('RMSE: ', test.rmse[i], ' MSE: ', test.mse[i], '\n'))
+      sum_rmse =  sum_rmse + test.rmse[i]
+      if (test.rmse[i] < min_rmse) {
+        min_rmse = test.rmse[i]
+      }
+      if (test.rmse[i] > max_rmse) {
+        max_rmse = test.rmse[i]
+      }
     }
   } 
+  avg_rmse = sum_rmse / nfolds
+  print(avg_rmse, min_rmse, max_rmse)
 }
 
 #------------------------------------------------------------------------------------------------
@@ -347,8 +408,11 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10) {
 # set working dir to my file 
 setwd('~/workspace/NYC_taxi_fare')
 
-# read data, choose subset 
-train_df <- read.csv(file = './data/train.csv', nrows=100000) 
+
+setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
+train_df <- read.csv(file = '/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/fares2010.csv')
+# # read data, choose subset 
+# train_df <- read.csv(file = './data/train.csv', nrows=100000) 
 head(train_df)
 
 
@@ -367,7 +431,8 @@ train_df <- get_season_feature(train_df)
 train_df <- get_only_manhattan_data(train_df)
 train_df <- classify_fare_amount(train_df)
 train_df <- compute_fare_per_km(train_df)
-train_df <- add_NY_holidays(train_df)
+#train_df <- add_NY_holidays(train_df)
+train_df <- remove_large_fare_per_km(train_df)
 
 # select final year (check data for now I am taking this)
 train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30') 
@@ -375,6 +440,10 @@ train_df <- subset(train_df, train_df$pickup_date >= '2014-06-30')
 # remove redundant columns
 train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
 head(train_df)
+
+#encoding if necessary
+#train_df <- encode_weekday(train_df)
+#train_df <- encode_season(train_df)
 
 # specify which graph you want to plot if any
 plot_graphs(train_df, graph = 'fare_amount_hist')
@@ -388,13 +457,22 @@ plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
 ## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
 cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression')
 
+classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
+
+fare_per_km_formula = fare_per_km ~ pickup_latitude + pickup_longitude +
+  dropoff_longitude + dropoff_latitude + passenger_count + distance_kms
+
+cross_validation(train_df, 'randomForest', fare_per_km_formula, 'regression')
+cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
+
 
 ## CLUSTERING ON ON AVG_FARE_PER_KM ---------------------------------------------------------------       
 
 
 ## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
 regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
-      dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
+  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
 classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
   dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
@@ -406,4 +484,5 @@ cross_validation(train_df, 'randomForest', regression_amount_formula, 'regressio
 
 # Get results from last cross validation and make a df 
 pred_df <- data.frame(true = X_test$fare_amount_class, preds = predictions_rf)
+
 
