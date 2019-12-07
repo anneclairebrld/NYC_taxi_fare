@@ -199,6 +199,24 @@ get_day_of_week <- function(df){
   return(df)
 }
 
+# get neighborhoods
+get_day_of_week <- function(df){
+  nyc_neighborhoods <- readOGR("./nyc-neighborhoods.geojson")
+  summary(nyc_neighborhoods)
+  nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
+
+  points <- data.frame(lat=df$pickup_latitude, lng=df$pickup_longitude)
+
+  points_spdf <- points
+  coordinates(points_spdf) <- ~lng + lat
+  proj4string(points_spdf) <- proj4string(nyc_neighborhoods)
+  matches <- over(points_spdf, nyc_neighborhoods)
+  df$neighborhoods <- matches$name
+  
+  return(df)
+}
+
+
 # encode if worday or weekend
 worday_weekend_feature <- function(df){
   df$workday <- 1 
@@ -490,16 +508,16 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10, boost_ty
 #------------------------------------------------------------------------------------------------
 
 # set working dir to my file 
-setwd('~/workspace/NYC_taxi_fare')
+setwd('C:/Users/Camille/Documents/GITHUB/MACHINE LEARNING/Big_Data_Analytics/NYC_taxi_fare/new-york-city-taxi-fare-prediction/')
 
-train_df <- read.csv(file = './data/data.csv')
-
+train_df <- read.csv(file = './data/faresnew2014.csv')
 setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
-train_df <- read.csv(file = './fares2010.csv')
+train_df <- read.csv(file = './data/faresnew2014.csv')
 # # read data, choose subset 
 # train_df <- read.csv(file = './data/train.csv', nrows=100000) 
 head(train_df)
 
+routing_features(train_df)
 
 # Feature engineering ---------------------------------------------------------------------------
 train_df <- remove_bad_rows(train_df)
