@@ -19,6 +19,11 @@ library(stringr)
 library(ggExtra)
 library(xgboost)
 library(tidyverse)
+library(httr)
+library(broom.mixed)
+library(tigris)
+library(rgdal)
+
 Sys.setenv(TZ='UTC')
 
 ## remove bad rows from initial dataset 
