@@ -121,7 +121,6 @@ countdown_holidays <- function(df, holiday_date) {  # input mia imerominia kai t
   return(df)
 }
 
-
 # separate date and time 
 date_time_features <- function(df){
   df$pickup_date <- as.Date(df$pickup_datetime)
@@ -367,6 +366,64 @@ plot_graphs <- function(df, graph = 'none'){
             legend.spacing.x = unit(0.5, 'cm')
       )
   }
+  else if (graph == 'Time vs price'){
+    ggplot(df, aes(y = fare_per_km, x = pickup_hour, group = pickup_hour) )+
+      geom_boxplot() + 
+      scale_x_continuous('Pick up hour') + 
+      scale_y_continuous('Fare per kilometer amount') +
+      ggtitle('Taxi fare per kilometer by hour') +
+      theme_gray(base_size = 12, base_family = "sans") +
+      #theme_hc(base_size = 10, base_family = "sans") +
+      theme(text = element_text(family = "'NimbusSan'"), #, color = "grey20"
+            plot.title = element_text(size=15),
+            axis.title.y = element_text(size=10),
+            axis.title.x = element_text(size=10),
+            axis.text.x = element_text(angle = 45),
+            legend.spacing.x = unit(0.5, 'cm')
+      )
+  }else if (graph == 'Count taxis by hour'){
+    occ <- df %>% count(df$pickup_hour)
+    print(occ)
+    
+    ggplot(occ, aes(y = n, x = `df$pickup_hour`, group = 2) )+
+      geom_line() +
+      scale_x_continuous('Pick up hour') + 
+      scale_y_continuous('Taxi count') +
+      ggtitle('Taxi count by hour') +
+      theme_economist(base_size = 10, base_family = "sans", horizontal = TRUE, dkpanel = FALSE) +
+      theme(text = element_text(family = "'NimbusSan'"), #, color = "grey20"
+            plot.title = element_text(size=15),
+            axis.title.y = element_text(size=10),
+            axis.title.x = element_text(size=10),
+            axis.text.x = element_text(angle = 45),
+            legend.spacing.x = unit(0.5, 'cm')
+      )
+  }
+  else if (graph == 'Evolution of prices'){
+    sub <- select(df, pickup_date, fare_per_km)
+    sub$year <- year(sub$pickup_date)
+    sub$month <- month(sub$pickup_date)
+    sub <- select(sub, year, month, fare_per_km)
+    
+    occ <- sub %>% 
+      group_by(year, month) %>% 
+      summarise(avg = mean(fare_per_km)) 
+    
+    ggplot(occ, aes(y = avg, x = month, group = 2) )+
+      geom_line() +
+      scale_x_continuous('Month') + 
+      scale_y_continuous('Average price per km') +
+      ggtitle('Evolution of prices') +
+      theme_economist(base_size = 10, base_family = "sans", horizontal = TRUE, dkpanel = FALSE) +
+      theme(text = element_text(family = "'NimbusSan'"), #, color = "grey20"
+            plot.title = element_text(size=15),
+            axis.title.y = element_text(size=10),
+            axis.title.x = element_text(size=10),
+            axis.text.x = element_text(angle = 45),
+            legend.spacing.x = unit(0.5, 'cm') )
+    
+    
+  }
   else if (graph == 'Histogram of Euclidean distance') {
     ggplot(df, aes(x=distance_kms)) + geom_histogram(binwidth=1)+
       scale_x_continuous(name="Distance in kms", limits=c(0, 50)) +
@@ -555,19 +612,24 @@ for(j in 1:length(ny_holidays_2014)){
 }
 
 
-# Remove redundant columns
-train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
-train_df = train_df[train_df$pickup_date < as.Date('2015-01-01'), ]
-head(train_df)
-
 # One-hot Encoding
 train_df <- encode_weekday(train_df)
 train_df <- encode_season(train_df)
 
+# Remove redundant columns
+train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
+
+# separate test and train dataset
+test_df <- train_df[(as.Date('2015-01-01') <= train_df$pickup_date) & (train_df$pickup_date <= as.Date('2015-04-01')), ]
+train_df <- train_df[train_df$pickup_date < as.Date('2015-01-01'), ]
+head(train_df)
+head(test_df)
+
+
 ## PLOTTING GRAPHS --------------------------------------------------------------------------------
 
 # specify which graph you want to plot if any
-#plot_graphs(train_df, graph = 'fare_amount_hist')
+plot_graphs(train_df, graph = 'fare_amount_hist')
 #plot_graphs(train_df, graph = 'Histogram of Euclidean distance')
 #plot_graphs(train_df, graph = 'Scatter Plot Distance Fare Amount')
 #plot_graphs(train_df, graph = 'Fare per km plot')
