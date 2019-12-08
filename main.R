@@ -205,7 +205,7 @@ get_day_of_week <- function(df){
 
 # get neighborhoods
 get_neighborhood <- function(df){
-  nyc_neighborhoods <- readOGR("./nyc-neighborhoods.geojson")
+  nyc_neighborhoods <- readOGR("/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/nyc-neighborhoods.geojson")
   summary(nyc_neighborhoods)
   nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
 
@@ -336,6 +336,34 @@ encode_season <- function(df){
   rm(season2)
   rm(season3)
   df$season_feature <- NULL
+  return(df)
+}
+
+#encode & pickupneigh
+encode_pickupneigh <- function(df){
+  pickupneigh1 <- data.frame(df$X, df$pickup_neighborhoods)
+  pickupneigh2 <- dummyVars("~ .", data = pickupneigh1)
+  pickupneigh3 <- data.frame(predict(pickupneigh2, newdata = pickupneigh1))
+  names(pickupneigh3)[names(pickupneigh3) == "df.X"] <- "X"
+  df <-merge(df,pickupneigh3, by.x = 'X',by.y='X')
+  rm(pickupneigh1)
+  rm(pickupneigh2)
+  rm(pickupneigh3)
+  df$pickup_neighborhoods<- NULL
+  return(df)
+}
+
+#encode & droppoffneigh
+encode_droppoffneigh <- function(df){
+  droppoffneigh1 <- data.frame(df$X, df$dropoff_neighborhoods)
+  droppoffneigh2 <- dummyVars("~ .", data = droppoffneigh1)
+  droppoffneigh3 <- data.frame(predict(droppoffneigh2, newdata = droppoffneigh1))
+  names(droppoffneigh3)[names(droppoffneigh3) == "df.X"] <- "X"
+  df <-merge(df,droppoffneigh3, by.x = 'X',by.y='X')
+  rm(droppoffneigh1)
+  rm(droppoffneigh2)
+  rm(droppoffneigh3)
+  df$df$dropoff_neighborhoods<- NULL
   return(df)
 }
 
@@ -633,7 +661,8 @@ setwd("~/workspace/NYC_taxi_fare")
 #train_df <- read.csv(file = './data/faresnew2014.csv')
 #setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
 #train_df <- read.csv(file = './data/faresnew2014.csv')
-# # read data, choose subset 
+##read data, choose subset 
+#train_df<-read.csv('/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/faresnew2014.csv')
 train_df <- read.csv(file = './data/data.csv') 
 head(train_df)
 
@@ -672,6 +701,8 @@ train_df <- get_neighborhood(train_df)
 # One-hot Encoding
 train_df <- encode_weekday(train_df)
 train_df <- encode_season(train_df)
+train_df <- encode_pickupneigh(train_df)
+train_df <- encode_droppoffneigh(train_df)
 
 # Remove redundant columns
 train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
@@ -682,6 +713,8 @@ train_df <- train_df[train_df$pickup_date < as.Date('2015-01-01'), ]
 head(train_df)
 head(test_df)
 
+train_df$X <- NULL
+test_df$X <- NULL
 
 ## PLOTTING GRAPHS --------------------------------------------------------------------------------
 
