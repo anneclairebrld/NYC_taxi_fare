@@ -454,12 +454,23 @@ plot_graphs <- function(df, graph = 'none'){
   else if (graph == 'Marginal representation avg fare distance') {
     g <- ggplot(df, aes(distance_kms, fare_per_km)) + geom_count() 
     ggMarginal(g, type = "histogram", fill="transparent")
-  }else if (graph == 'Results, scatter_plot_true_vs_preds'){
+  }
+  else if (graph == 'Results, scatter_plot_true_vs_preds'){
     ggplot(df, aes(x = as.numeric(true_val), y = as.numeric(Predictions))) +
       geom_point() + 
       scale_x_continuous('True value') + 
       scale_y_continuous('Predictions') + 
+      ggtitle('Prediction Results') + 
       geom_smooth(method = lm)
+  }
+  else if (graph == 'Results, importance of features'){
+    df <- df[order(-Gain),]
+    positions <- df[, Feature]
+    ggplot(df, aes(x = Feature, y = Gain)) +
+      geom_bar(stat='identity') +
+      coord_flip() +
+      ggtitle('Feature importance') +
+      scale_x_discrete(limits = positions)
   }
 }
 
@@ -596,6 +607,12 @@ final_predictions <- function(X_train, X_test, features){
   amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
                              print_every_n = 5,maximize = T , eval_metric = "rmse") 
   
+  # get the importance of features
+  importance <- xgb.importance(feature_names = features, model = amount_model)
+  #head(importance)
+  #xgb.plot.importance(importance_matrix = importance)
+  
+  
   # predicy 
   predictions  <- predict(amount_model, X_test)
   
@@ -604,7 +621,7 @@ final_predictions <- function(X_train, X_test, features){
   cat(c('RMSE: ', rmse, ' MSE: ', mse, '\n'))
   
   preds_df <- data.frame('Predictions' = predictions, 'true_val'= target)
-  return(preds_df)
+  return(list('preds_df' = preds_df, 'feature_importance' = importance))
 }
 
 
@@ -727,14 +744,17 @@ head(test_df)
 
 ### FINAL PREDICTIONS FOR BASIC MODEL -------------------------------------------------------------------------------------------
 
-features <- c('pickup_neighborhoods', 'dropoff_neighborhoods',  'month_feature', 'passenger_count', 'pickup_hour',
+features <- c('pickup_latitude', 'pickup_longitude', 'dropoff_latitude', 'dropoff_longitude', 'pickup_neighborhoods', 'dropoff_neighborhoods',  'month_feature', 'passenger_count', 'pickup_hour',
 'week_within_month', 'distance_kms', 'countdown', 'spring', 'summer', 'winter',  'df.weekday.Friday', 
 'df.weekday.Monday',  'df.weekday.Saturday', 'df.weekday.Sunday',  'df.weekday.Thursday', 
 'df.weekday.Tuesday', 'df.weekday.Wednesday', 'workday', 'month_feature', 'holiday')
 
-preds_df <- final_predictions(train_df, test_df, features)
+output <- final_predictions(train_df, test_df, features)
+
 
 ## PLOTTING RESULTS --------------------------------------------------------------------------------------------------------------
-plot_graphs(preds_df, 'Results, scatter_plot_true_vs_preds')
+plot_graphs(output$preds_df, 'Results, scatter_plot_true_vs_preds')
+plot_graphs(output$feature_importance, 'Results, importance of features')
+
 
 
