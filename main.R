@@ -215,7 +215,16 @@ get_neighborhood <- function(df){
   coordinates(points_spdf) <- ~lng + lat
   proj4string(points_spdf) <- proj4string(nyc_neighborhoods)
   matches <- over(points_spdf, nyc_neighborhoods)
-  df$neighborhoods <- matches$name
+  
+  df$pickup_neighborhoods <- matches$name
+  
+  points <- data.frame(lat=df$dropoff_latitude, lng=df$dropoff_longitude)
+  
+  points_spdf <- points
+  coordinates(points_spdf) <- ~lng + lat
+  proj4string(points_spdf) <- proj4string(nyc_neighborhoods)
+  matches <- over(points_spdf, nyc_neighborhoods)
+  df$dropoff_neighborhoods <- matches$name
   
   return(df)
 }
@@ -718,10 +727,10 @@ head(test_df)
 
 ### FINAL PREDICTIONS FOR BASIC MODEL -------------------------------------------------------------------------------------------
 
-features <- c('pickup_latitude', 'pickup_longitude', 'month_feature', 'passenger_count', 'pickup_hour',
+features <- c('pickup_neighborhoods', 'dropoff_neighborhoods',  'month_feature', 'passenger_count', 'pickup_hour',
 'week_within_month', 'distance_kms', 'countdown', 'spring', 'summer', 'winter',  'df.weekday.Friday', 
 'df.weekday.Monday',  'df.weekday.Saturday', 'df.weekday.Sunday',  'df.weekday.Thursday', 
-'df.weekday.Tuesday', 'df.weekday.Wednesday', 'dropoff_longitude', 'dropoff_latitude', 'workday', 'month_feature', 'holiday')
+'df.weekday.Tuesday', 'df.weekday.Wednesday', 'workday', 'month_feature', 'holiday')
 
 preds_df <- final_predictions(train_df, test_df, features)
 
