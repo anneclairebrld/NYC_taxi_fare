@@ -204,7 +204,7 @@ get_day_of_week <- function(df){
 }
 
 # get neighborhoods
-get_day_of_week <- function(df){
+get_neighborhood <- function(df){
   nyc_neighborhoods <- readOGR("./nyc-neighborhoods.geojson")
   summary(nyc_neighborhoods)
   nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
@@ -566,20 +566,50 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10, boost_ty
 }
 
 
+final_predictions <- function(X_train, X_test, features){
+  # format data 
+  labels = as.numeric(X_train$fare_amount)
+  ind_var = select(X_train, features)
+  
+  XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var, as.numeric)), label = labels)
+  
+  target =  as.numeric(X_test$fare_amount)
+  test_ind_var = select(X_test, features)
+  
+  X_test_cor_form = X_test
+  X_test = xgb.DMatrix(data = as.matrix(sapply(test_ind_var, as.numeric)))
+  
+  
+  # declare model 
+  params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.4, gamma=0.1, max_depth=15, min_child_weight=1, 
+                 subsample=1, colsample_bytree=1)  
+
+  amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
+                             print_every_n = 5,maximize = T , eval_metric = "rmse") 
+  
+  # predicy 
+  predictions  <- predict(amount_model, X_test)
+  
+  rmse <- RMSE(target, predictions)
+  mse <- mean((target -  predictions)^2)
+  cat(c('RMSE: ', rmse, ' MSE: ', mse, '\n'))
+  
+  preds_df <- data.frame('Predictions' = predictions, 'true_val'= target)
+  return(preds_df)
+}
+
 
 #------------------------------------------------------------------------------------------------
 
 # set working dir to my file 
-setwd('C:/Users/Camille/Documents/GITHUB/MACHINE LEARNING/Big_Data_Analytics/NYC_taxi_fare/new-york-city-taxi-fare-prediction/')
-
-train_df <- read.csv(file = './data/faresnew2014.csv')
-setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
-train_df <- read.csv(file = './data/faresnew2014.csv')
+#setwd('C:/Users/Camille/Documents/GITHUB/MACHINE LEARNING/Big_Data_Analytics/NYC_taxi_fare/new-york-city-taxi-fare-prediction/')
+setwd("~/workspace/NYC_taxi_fare")
+#train_df <- read.csv(file = './data/faresnew2014.csv')
+#setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
+#train_df <- read.csv(file = './data/faresnew2014.csv')
 # # read data, choose subset 
-# train_df <- read.csv(file = './data/train.csv', nrows=100000) 
+train_df <- read.csv(file = './data/data.csv') 
 head(train_df)
-
-routing_features(train_df)
 
 # Feature engineering ---------------------------------------------------------------------------
 train_df <- remove_bad_rows(train_df)
@@ -611,6 +641,7 @@ for(j in 1:length(ny_holidays_2014)){
   train_df = countdown_holidays(train_df, ny_holidays_2014[j])
 }
 
+train_df <- get_neighborhood(train_df)
 
 # One-hot Encoding
 train_df <- encode_weekday(train_df)
@@ -629,7 +660,7 @@ head(test_df)
 ## PLOTTING GRAPHS --------------------------------------------------------------------------------
 
 # specify which graph you want to plot if any
-plot_graphs(train_df, graph = 'fare_amount_hist')
+#plot_graphs(train_df, graph = 'fare_amount_hist')
 #plot_graphs(train_df, graph = 'Histogram of Euclidean distance')
 #plot_graphs(train_df, graph = 'Scatter Plot Distance Fare Amount')
 #plot_graphs(train_df, graph = 'Fare per km plot')
@@ -637,21 +668,21 @@ plot_graphs(train_df, graph = 'fare_amount_hist')
 #plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
 
 ## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
-cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression',  boost_type = 'fare_per_km')
+#cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression',  boost_type = 'fare_per_km')
 
-regression_fare_per_km_formula = fare_per_km ~ distance_kms
-classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
-  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
+#regression_fare_per_km_formula = fare_per_km ~ distance_kms
+#classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+#  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-cross_validation(train_df, 'randomForest', regression_fare_per_km_formula, 'regression')
+#cross_validation(train_df, 'randomForest', regression_fare_per_km_formula, 'regression')
 
 
-fare_per_km_formula = fare_per_km ~ pickup_latitude + pickup_longitude +
-  dropoff_longitude + dropoff_latitude + passenger_count + distance_kms
+#fare_per_km_formula = fare_per_km ~ pickup_latitude + pickup_longitude +
+#  dropoff_longitude + dropoff_latitude + passenger_count + distance_kms
 
-cross_validation(train_df, 'randomForest', fare_per_km_formula, 'regression')
+#cross_validation(train_df, 'randomForest', fare_per_km_formula, 'regression')
 
-cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
+#cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
 
 
 ## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
@@ -662,20 +693,20 @@ cross_validation(train_df, 'lm', fare_per_km_formula, 'regression')
 #  fare_amount_class - fare_per_km + countdown
 
 ## CROSS VALIDATION ON AMOUNT MODEL ---------------------------------------------------------------
-col_names = names(train_df)
+#col_names = names(train_df)
 # col_names[3:length(col_names)]
-train_df2 = select(train_df, col_names[3:length(col_names)])
+#train_df2 = select(train_df, col_names[3:length(col_names)])
 
-train_df %>% select(fare_amount, distance_kms, month_feature)
+#train_df %>% select(fare_amount, distance_kms, month_feature)
 
-regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
-  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
+#regression_amount_formula = fare_amount ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+#  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour
 
-regression_amount_formula = log(fare_amount) ~ pickup_latitude + pickup_longitude + month_feature + weekday + 
-  passenger_count + pickup_hour + workday  + week_within_month + season_feature+ distance_kms
+#regression_amount_formula = log(fare_amount) ~ pickup_latitude + pickup_longitude + month_feature + weekday + 
+#  passenger_count + pickup_hour + workday  + week_within_month + season_feature+ distance_kms
 
-classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
-  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour + distance_kms
+#classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitude + month_feature +  weekday +
+#  dropoff_longitude + dropoff_latitude + passenger_count + pickup_hour + distance_kms
 
 #cross_validation(train_df, 'randomForest', classifier_amount_formula, 'classifier')
 #preds_df <- cross_validation(train_df, 'randomForest', regression_amount_formula, 'regression')
@@ -683,7 +714,16 @@ classifier_amount_formula = fare_amount_class ~ pickup_latitude + pickup_longitu
 #cross_validation(train_df, 'tree', regression_amount_formula, 'regression')
 
 # Model on everything
-preds_df <- cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression', boost_type = 'second_type')
+#preds_df <- cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression', boost_type = 'second_type')
+
+### FINAL PREDICTIONS FOR BASIC MODEL -------------------------------------------------------------------------------------------
+
+features <- c('pickup_latitude', 'pickup_longitude', 'month_feature', 'passenger_count', 'pickup_hour',
+'week_within_month', 'distance_kms', 'countdown', 'spring', 'summer', 'winter',  'df.weekday.Friday', 
+'df.weekday.Monday',  'df.weekday.Saturday', 'df.weekday.Sunday',  'df.weekday.Thursday', 
+'df.weekday.Tuesday', 'df.weekday.Wednesday', 'dropoff_longitude', 'dropoff_latitude', 'workday', 'month_feature', 'holiday')
+
+preds_df <- final_predictions(train_df, test_df, features)
 
 ## PLOTTING RESULTS --------------------------------------------------------------------------------------------------------------
 plot_graphs(preds_df, 'Results, scatter_plot_true_vs_preds')
