@@ -71,17 +71,21 @@ week_within_month <- function(df) {
 
 add_NY_holidays <- function(df) {
   df$holiday = 0
-  df[df$month_feature==1 & df$day_feature == 1,]$holiday = 1       # New Year
-  df[df$month_feature== 1  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1  # Martin Luther King day
-  df[df$month_feature==2 & df$day_feature == 12,]$holiday = 1      # Lincoln's day (float)
-  df[df$month_feature== 2  &  df$week_within_month == 3 & df$weekday == "Monday",]$holiday = 1   # Washington's day
-  df[df$month_feature == 5 & df$weekday == "Monday" , ]$holiday = 1       # Memorial day (last Monday)
-  df[df$month_feature==7 & df$day_feature == 4,]$holiday = 1       # Independence day
-  df[df$month_feature== 9  &  df$week_within_month == 1 & df$weekday == "Monday",]$holiday = 1   # Labor Day
-  df[df$month_feature==10 &  df$week_within_month == 2 & df$weekday == "Monday",]$holiday = 1   # Columbus day
-  df[df$month_feature==11 & df$day_feature == 11,]$holiday = 1     # Veteran's day
-  df[df$month_feature==11 &  df$week_within_month == 4 & df$weekday == "Thursday",]$holiday = 1       # Thanksgiving
-  df[df$month_feature==12 & df$day_feature == 25,]$holiday = 1    # Christmas
+  df[df$month_feature==1 & df$day_feature == 1 & df$year_feature == 2014,]$holiday = 1       # New Year
+  df[df$month_feature==1 & df$day_feature == 20  & df$year_feature == 2014,]$holiday = 1       # Lincoln's day
+  df[df$month_feature==2 & df$day_feature == 12 & df$year_feature == 2014,]$holiday = 1       # Washington's day
+  df[df$month_feature==2 & df$day_feature == 17 & df$year_feature == 2014,]$holiday = 1       #  Memorial day
+  df[df$month_feature==5 & df$day_feature == 26 & df$year_feature == 2014,]$holiday = 1       # Independence day
+  df[df$month_feature==7 & df$day_feature == 4 & df$year_feature == 2014,]$holiday = 1       # Labor Day
+  df[df$month_feature==9 & df$day_feature == 1 & df$year_feature == 2014,]$holiday = 1       # Columbus day
+  df[df$month_feature==11 & df$day_feature == 11 & df$year_feature == 2014,]$holiday = 1       # Veteran's day
+  df[df$month_feature==11 & df$day_feature == 27 & df$year_feature == 2014,]$holiday = 1       # Thanksgiving
+  df[df$month_feature==12 & df$day_feature == 25 & df$year_feature == 2014,]$holiday = 1       # Christmas
+  df[df$month_feature==1 & df$day_feature == 1 & df$year_feature == 2015,]$holiday = 1       # New Year
+  df[df$month_feature==1 & df$day_feature == 19  & df$year_feature == 2015,]$holiday = 1       # Lincoln's day
+  df[df$month_feature==2 & df$day_feature == 12 & df$year_feature == 2015,]$holiday = 1       # Washington's day
+  df[df$month_feature==2 & df$day_feature == 16 & df$year_feature == 2015,]$holiday = 1       #  Memorial day
+  df[df$month_feature==5 & df$day_feature == 25 & df$year_feature == 2015,]$holiday = 1       #  Memorial day
   
   return(df)
 }
@@ -205,7 +209,7 @@ get_day_of_week <- function(df){
 
 # get neighborhoods
 get_neighborhood <- function(df){
-  nyc_neighborhoods <- readOGR("./nyc-neighborhoods.geojson")
+  nyc_neighborhoods <- readOGR("/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/nyc-neighborhoods.geojson")
   summary(nyc_neighborhoods)
   nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
 
@@ -336,6 +340,34 @@ encode_season <- function(df){
   rm(season2)
   rm(season3)
   df$season_feature <- NULL
+  return(df)
+}
+
+#encode & pickupneigh
+encode_pickupneigh <- function(df){
+  pickupneigh1 <- data.frame(df$X, df$pickup_neighborhoods)
+  pickupneigh2 <- dummyVars("~ .", data = pickupneigh1)
+  pickupneigh3 <- data.frame(predict(pickupneigh2, newdata = pickupneigh1))
+  names(pickupneigh3)[names(pickupneigh3) == "df.X"] <- "X"
+  df <-merge(df,pickupneigh3, by.x = 'X',by.y='X')
+  rm(pickupneigh1)
+  rm(pickupneigh2)
+  rm(pickupneigh3)
+  df$pickup_neighborhoods<- NULL
+  return(df)
+}
+
+#encode & droppoffneigh
+encode_droppoffneigh <- function(df){
+  droppoffneigh1 <- data.frame(df$X, df$dropoff_neighborhoods)
+  droppoffneigh2 <- dummyVars("~ .", data = droppoffneigh1)
+  droppoffneigh3 <- data.frame(predict(droppoffneigh2, newdata = droppoffneigh1))
+  names(droppoffneigh3)[names(droppoffneigh3) == "df.X"] <- "X"
+  df <-merge(df,droppoffneigh3, by.x = 'X',by.y='X')
+  rm(droppoffneigh1)
+  rm(droppoffneigh2)
+  rm(droppoffneigh3)
+  df$df$dropoff_neighborhoods<- NULL
   return(df)
 }
 
@@ -586,6 +618,42 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10, boost_ty
 }
 
 
+estimate_fare_per_km_pred_cv <- function(df, model, nfolds=10) {
+  
+  df <- df[sample(nrow(df)), ]
+  index <- rep(1:nfolds, length.out = nrow(df))
+  
+  for(i in 1:nfolds){
+    insample  = which(index != i)
+    outsample = which(index == i)
+    
+    X_train <- df[insample, ]
+    X_test  <- df[outsample, ]
+    
+    if (model == 'XGBoost') {
+      labels =  X_train$fare_per_km
+      ind_var = X_train$distance_kms
+      XGB_regression <- xgb.DMatrix(data = as.matrix(ind_var),label = labels)
+    }
+    
+    if (model == 'XGBoost'){
+      params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.3, gamma=0, max_depth=9, min_child_weight=1, 
+                     subsample=1, colsample_bytree=1)  
+      amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
+                                 print_every_n = 5,maximize = T , eval_metric = "rmse") 
+      target =  X_test$fare_per_km
+      test_ind_var = X_test$distance_kms
+      X_test_cor_form = X_test
+      X_test = xgb.DMatrix(data = as.matrix(test_ind_var))
+    }
+    
+    predictions  <- predict(amount_model, X_test)
+    df[outsample,]$fare_per_km_pred <- predictions
+    
+  }
+  
+  return(df)
+}
 final_predictions <- function(X_train, X_test, features){
   # format data 
   labels = as.numeric(X_train$fare_amount)
@@ -603,6 +671,71 @@ final_predictions <- function(X_train, X_test, features){
   # declare model 
   params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.4, gamma=0.1, max_depth=15, min_child_weight=1, 
                  subsample=1, colsample_bytree=1)  
+
+
+total_fare_pred <- function(df, model, nfolds=10) {
+  test.rmse <- rep(0, nfolds)
+  test.mse <- rep(0, nfolds)
+  
+  train_df2 <- df[sample(nrow(df)), ]
+  index <- rep(1:nfolds, length.out = nrow(df))
+  
+  sum_rmse = 0
+  max_rmse = 0
+  min_rmse = 100  
+  
+  for(i in 1:nfolds){
+    insample  = which(index != i)
+    outsample = which(index == i)
+    
+    X_train <- df[insample, ]
+    X_test  <- df[outsample, ]
+    
+    if (model == 'XGBoost') {
+      labels =  X_train$fare_amount
+      col_names = names(X_train)
+      ind_var_col_names = col_names[-c(1,2,10,16,17)]
+      ind_var = select(X_train, ind_var_col_names)      #### prepei na dw ti ginetai edw
+      XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var, as.numeric)),label = labels)
+    }
+    
+    if (model == 'XGBoost'){
+      params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.3, gamma=0, max_depth=9, min_child_weight=1, 
+                     subsample=1, colsample_bytree=1)  
+      amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
+                                 print_every_n = 5,maximize = T , eval_metric = "rmse") 
+      target =  X_test$fare_amount
+      col_names = names(X_test)
+      ind_var_col_names = col_names[-c(1,2,10,16,17)]
+      test_ind_var = select(X_test, ind_var_col_names)
+      # X_test_cor_form = X_test
+      X_test = xgb.DMatrix(data = as.matrix(sapply(test_ind_var, as.numeric)))
+    }
+    
+    predictions  <- predict(amount_model, X_test)
+    
+    test.rmse[i] =  RMSE(target, predictions)
+    test.mse[i] =  mean((target -  predictions)^2)
+    cat(c('RMSE: ', test.rmse[i], ' MSE: ', test.mse[i], '\n'))
+    
+    sum_rmse =  sum_rmse + test.rmse[i]
+    if (i == 1) {
+      min = test.rmse[i]                    # min initialisation
+    }
+    if (test.rmse[i] < min_rmse) {
+      min_rmse = test.rmse[i]
+    }
+    if (test.rmse[i] > max_rmse) {
+      max_rmse = test.rmse[i]
+    }
+    
+  }
+  
+  avg_rmse = sum_rmse / nfolds
+  cat(avg_rmse, min_rmse, max_rmse)
+  
+}
+
 
   amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
                              print_every_n = 5,maximize = T , eval_metric = "rmse") 
@@ -633,7 +766,8 @@ setwd("~/workspace/NYC_taxi_fare")
 #train_df <- read.csv(file = './data/faresnew2014.csv')
 #setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
 #train_df <- read.csv(file = './data/faresnew2014.csv')
-# # read data, choose subset 
+##read data, choose subset 
+#train_df<-read.csv('/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/faresnew2014.csv')
 train_df <- read.csv(file = './data/data.csv') 
 head(train_df)
 
@@ -653,13 +787,17 @@ train_df <- get_season_feature(train_df)
 train_df <- get_only_manhattan_data(train_df)
 train_df <- classify_fare_amount(train_df)
 train_df <- compute_fare_per_km(train_df)
-
-ny_holidays_2014 = c('2014-01-01', 
-                     '2014-01-20', '2014-02-12', '2014-02-17', '2014-05-26', '2014-07-04',
-                     '2014-09-01', '2014-11-11', '2014-11-27', '2014-12-25')
-
-train_df <- add_NY_holidays(train_df)
 train_df <- remove_large_fare_per_km(train_df, 20)
+train_df <- add_NY_holidays(train_df)
+
+
+# needed only for countdown
+ny_holidays_2014_2015 = c('2014-01-01', 
+                          '2014-01-20', '2014-02-12', '2014-02-17', '2014-05-26', '2014-07-04',
+                          '2014-09-01', '2014-11-11', '2014-11-27', '2014-12-25', '2015-01-01',
+                          '2015-01-19', '2015-02-12', '2015-02-16', '2015-03-25')
+
+
 
 
 train_df$countdown = 0     # initialise new column
@@ -672,6 +810,8 @@ train_df <- get_neighborhood(train_df)
 # One-hot Encoding
 train_df <- encode_weekday(train_df)
 train_df <- encode_season(train_df)
+train_df <- encode_pickupneigh(train_df)
+train_df <- encode_droppoffneigh(train_df)
 
 # Remove redundant columns
 train_df <- train_df[, !names(train_df) %in% c('key', 'pickup_datetime')]
@@ -682,6 +822,11 @@ train_df <- train_df[train_df$pickup_date < as.Date('2015-01-01'), ]
 head(train_df)
 head(test_df)
 
+#encoding if necessary
+train_df <- encode_weekday(train_df)
+train_df <- encode_season(train_df)
+train_df$X <- NULL
+test_df$X <- NULL
 
 ## PLOTTING GRAPHS --------------------------------------------------------------------------------
 
@@ -692,6 +837,13 @@ head(test_df)
 #plot_graphs(train_df, graph = 'Fare per km plot')
 #plot_graphs(train_df, graph = 'Average price per km')
 #plot_graphs(train_df, graph = 'Marginal representation avg fare distance')
+
+################ MODEL A: Distance -> fare/km -> total_fare  #######################
+
+train_df$fare_per_km_pred = 0 
+train_df = estimate_fare_per_km_pred_cv(train_df, 'XGBoost')
+total_fare_pred(train_df,'XGBoost')
+
 
 ## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
 #cross_validation(train_df, 'XGBoost', 'no_formula' , 'regression',  boost_type = 'fare_per_km')
