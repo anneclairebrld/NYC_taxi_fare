@@ -68,6 +68,27 @@ week_within_month <- function(df) {
   return(df)
 }
 
+airport_start_or_dest <- function(df){
+  #NYC_bounding_box = c(-74.26, -73.71 ,  40.43 , 40.95)
+  #JFK_bounding_box = c(-73.86, -73.75 ,  40.61 , 40.66)
+  #LGA_bounding_box = c(-73.91, -73.82 ,  40.75 , 40.79)
+  #EWR_bounding_box = c(-74.19, -74.15 , 40.67 , 40.70)
+  
+  df$NYC_dropoff <- ifelse(between(df$dropoff_longitude, -74.26, -73.71) & between(df$dropoff_latitude, 40.43, 40.95),1,0)
+  df$JKF_dropoff <- ifelse(between(df$dropoff_longitude, -73.86, -73.75) & between(df$dropoff_latitude, 40.61, 40.66),1,0)
+  df$LGA_dropoff <- ifelse(between(df$dropoff_longitude, -73.91, -73.82) & between(df$dropoff_latitude, 40.75, 40.79),1,0)
+  df$EWR_dropoff <- ifelse(between(df$dropoff_longitude, -74.19, -73.15) & between(df$dropoff_latitude, 40.67, 40.70),1,0)
+  
+  df$NYC_pickup <- ifelse(between(df$pickup_longitude, -74.26, -73.71) & between(df$pickup_latitude, 40.43, 40.95),1,0)
+  df$JKF_pickup <- ifelse(between(df$pickup_longitude, -73.86, -73.75) & between(df$pickup_latitude, 40.61, 40.66),1,0)
+  df$LGA_pickup <- ifelse(between(df$pickup_longitude, -73.91, -73.82) & between(df$pickup_latitude, 40.75, 40.79),1,0)
+  df$EWR_pickup <- ifelse(between(df$pickup_longitude, -74.19, -73.15) & between(df$pickup_latitude, 40.67, 40.70),1,0)
+  
+  df$trip_to_airport <- ifelse((df$LGA_dropoff == 1) | (df$LGA_pickup == 1) | (df$NYC_dropoff == 1) | (df$NYC_pickup == 1) |
+                                 (df$JFK_dropoff == 1) | (df$JFK_pickup == 1) | (df$EWT_dropoff == 1) | (df$EWT_pickup == 1) , 1, 0)
+  return(df)
+}
+
 
 add_NY_holidays <- function(df) {
   df$holiday = 0
@@ -176,6 +197,7 @@ routing_features <- function(df){
 
 get_only_manhattan_data <- function(df){
   df <- df %>% filter( between(dropoff_latitude, 40.70, 40.83) & between(dropoff_longitude, -74.025, -73.93) )
+  df <- df %>% filter( between(pickup_latitude, 40.70, 40.83) & between(pickup_longitude, -74.025, -73.93) )
   
   return(df)
 }
@@ -186,8 +208,9 @@ compute_distance <- function(df, type='euclidean'){
     df$distance_kms <- round(distHaversine (df[c('pickup_longitude', 'pickup_latitude')], df[c('dropoff_longitude','dropoff_latitude')]) / 1000,1)
     
     return(df)
-  } else {# case when computing shortest distance # to implement
+  } else if (type == 'harvesine'){# case when computing shortest distance # to implement
     
+      
     return(df)
   }
 }
@@ -209,7 +232,7 @@ get_day_of_week <- function(df){
 
 # get neighborhoods
 get_neighborhood <- function(df){
-  nyc_neighborhoods <- readOGR("/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/nyc-neighborhoods.geojson")
+  nyc_neighborhoods <- readOGR("C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/NYC_taxi_fare/nyc-neighborhoods.geojson")
   summary(nyc_neighborhoods)
   nyc_neighborhoods_df <- tidy(nyc_neighborhoods)
 
@@ -218,6 +241,7 @@ get_neighborhood <- function(df){
   points_spdf <- points
   coordinates(points_spdf) <- ~lng + lat
   proj4string(points_spdf) <- proj4string(nyc_neighborhoods)
+
   matches <- over(points_spdf, nyc_neighborhoods)
   
   df$pickup_neighborhoods <- matches$name
@@ -250,6 +274,7 @@ get_month_day_feature <- function(df){
   #df$day_feature  <- as.factor(day(df$pickup_date))
   df$month_feature <- month(df$pickup_date)
   df$day_feature  <- day(df$pickup_date)
+  df$year_feature <- year(df$pickup_date)
   return(df)
 }
 
@@ -618,6 +643,46 @@ cross_validation <- function(df, model, formula, model_type, nfolds=10, boost_ty
 }
 
 
+final_predictions <- function(X_train, X_test, features){
+  # format data 
+  labels = as.numeric(X_train$fare_amount)
+  ind_var = select(X_train, features)
+  
+  XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var, as.numeric)), label = labels)
+  
+  target =  as.numeric(X_test$fare_amount)
+  test_ind_var = select(X_test, features)
+  
+  X_test_cor_form = X_test
+  X_test = xgb.DMatrix(data = as.matrix(sapply(test_ind_var, as.numeric)))
+  
+  
+  # declare model 
+  params <- list(booster = "gbtree", objective = "reg:squarederror", eta=1, gamma=0.05, max_depth=7, 
+                 subsample=1, colsample_bytree=1)  
+
+  amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 50, 
+                             print_every_n = 5,maximize = T , eval_metric = "rmse") 
+  
+  # get the importance of features
+  importance <- xgb.importance(feature_names = features, model = amount_model)
+  #head(importance)
+  #xgb.plot.importance(importance_matrix = importance)
+  
+  
+  # predicy 
+  predictions  <- predict(amount_model, X_test)
+  
+  rmse <- RMSE(target, predictions)
+  mse <- mean((target -  predictions)^2)
+  cat(c('RMSE: ', rmse, ' MSE: ', mse, '\n'))
+  
+  preds_df <- data.frame('Predictions' = predictions, 'true_val'= target)
+  return(list('preds_df' = preds_df, 'feature_importance' = importance))
+}
+
+
+
 estimate_fare_per_km_pred_cv <- function(df, model, nfolds=10) {
   
   df <- df[sample(nrow(df)), ]
@@ -654,122 +719,53 @@ estimate_fare_per_km_pred_cv <- function(df, model, nfolds=10) {
   
   return(df)
 }
-final_predictions <- function(X_train, X_test, features){
+
+
+# eta = 0.3 , max_depth=9
+
+
+xgb_prediction <- function (X_train, X_test, features, target){
   # format data 
-  labels = as.numeric(X_train$fare_amount)
-  ind_var = select(X_train, features)
+  # labels = as.numeric(X_train$fare_amount)
+  label_train =  select(X_train, target)
+  ind_var_train = select(X_train, features)
   
-  XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var, as.numeric)), label = labels)
+  XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var_train, as.numeric)), label = as.matrix(sapply(label_train, as.numeric)))
   
-  target =  as.numeric(X_test$fare_amount)
-  test_ind_var = select(X_test, features)
-  
-  X_test_cor_form = X_test
-  X_test = xgb.DMatrix(data = as.matrix(sapply(test_ind_var, as.numeric)))
-  
-  
-  # declare model 
-  params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.4, gamma=0.1, max_depth=15, min_child_weight=1, 
+  params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.3, gamma=0, max_depth=9, min_child_weight=1, 
                  subsample=1, colsample_bytree=1)  
-
-
-total_fare_pred <- function(df, model, nfolds=10) {
-  test.rmse <- rep(0, nfolds)
-  test.mse <- rep(0, nfolds)
-  
-  train_df2 <- df[sample(nrow(df)), ]
-  index <- rep(1:nfolds, length.out = nrow(df))
-  
-  sum_rmse = 0
-  max_rmse = 0
-  min_rmse = 100  
-  
-  for(i in 1:nfolds){
-    insample  = which(index != i)
-    outsample = which(index == i)
-    
-    X_train <- df[insample, ]
-    X_test  <- df[outsample, ]
-    
-    if (model == 'XGBoost') {
-      labels =  X_train$fare_amount
-      col_names = names(X_train)
-      ind_var_col_names = col_names[-c(1,2,10,16,17)]
-      ind_var = select(X_train, ind_var_col_names)      #### prepei na dw ti ginetai edw
-      XGB_regression <- xgb.DMatrix(data = as.matrix(sapply(ind_var, as.numeric)),label = labels)
-    }
-    
-    if (model == 'XGBoost'){
-      params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.3, gamma=0, max_depth=9, min_child_weight=1, 
-                     subsample=1, colsample_bytree=1)  
-      amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
-                                 print_every_n = 5,maximize = T , eval_metric = "rmse") 
-      target =  X_test$fare_amount
-      col_names = names(X_test)
-      ind_var_col_names = col_names[-c(1,2,10,16,17)]
-      test_ind_var = select(X_test, ind_var_col_names)
-      # X_test_cor_form = X_test
-      X_test = xgb.DMatrix(data = as.matrix(sapply(test_ind_var, as.numeric)))
-    }
-    
-    predictions  <- predict(amount_model, X_test)
-    
-    test.rmse[i] =  RMSE(target, predictions)
-    test.mse[i] =  mean((target -  predictions)^2)
-    cat(c('RMSE: ', test.rmse[i], ' MSE: ', test.mse[i], '\n'))
-    
-    sum_rmse =  sum_rmse + test.rmse[i]
-    if (i == 1) {
-      min = test.rmse[i]                    # min initialisation
-    }
-    if (test.rmse[i] < min_rmse) {
-      min_rmse = test.rmse[i]
-    }
-    if (test.rmse[i] > max_rmse) {
-      max_rmse = test.rmse[i]
-    }
-    
-  }
-  
-  avg_rmse = sum_rmse / nfolds
-  cat(avg_rmse, min_rmse, max_rmse)
-  
-}
-
-
   amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
                              print_every_n = 5,maximize = T , eval_metric = "rmse") 
   
-  # get the importance of features
+  label_test =  select(X_test, target)
+  ind_var_test =select(X_test, features)
+  Test_input_data = xgb.DMatrix(data =as.matrix(sapply(ind_var_test, as.numeric)))
+  
+  predictions  <- predict(amount_model, Test_input_data)
+  
+  test.rmse =  RMSE(as.matrix(label_test), predictions)
+  test.mse =  mean((as.matrix(label_test) -  predictions)^2)
+  cat(c('RMSE: ', test.rmse, ' MSE: ', test.mse, '\n'))
+  
   importance <- xgb.importance(feature_names = features, model = amount_model)
-  #head(importance)
-  #xgb.plot.importance(importance_matrix = importance)
   
+  return(predictions)
+  # return(importance)
   
-  # predicy 
-  predictions  <- predict(amount_model, X_test)
-  
-  rmse <- RMSE(target, predictions)
-  mse <- mean((target -  predictions)^2)
-  cat(c('RMSE: ', rmse, ' MSE: ', mse, '\n'))
-  
-  preds_df <- data.frame('Predictions' = predictions, 'true_val'= target)
-  return(list('preds_df' = preds_df, 'feature_importance' = importance))
 }
-
 
 #------------------------------------------------------------------------------------------------
 
 # set working dir to my file 
 #setwd('C:/Users/Camille/Documents/GITHUB/MACHINE LEARNING/Big_Data_Analytics/NYC_taxi_fare/new-york-city-taxi-fare-prediction/')
-setwd("~/workspace/NYC_taxi_fare")
+# setwd("~/workspace/NYC_taxi_fare")
 #train_df <- read.csv(file = './data/faresnew2014.csv')
-#setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
-#train_df <- read.csv(file = './data/faresnew2014.csv')
+setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/kleo staff')
+train_df <- read.csv(file = './faresnew2014.csv')
 ##read data, choose subset 
 #train_df<-read.csv('/Users/thomasdorveaux/Desktop/Big Data Analytics/Group Assignment/NYC_taxi_fare/faresnew2014.csv')
-train_df <- read.csv(file = './data/data.csv') 
-head(train_df)
+#train_df <- read.csv(file = './data/data.csv') 
+#head(train_df)
 
 # Feature engineering ---------------------------------------------------------------------------
 train_df <- remove_bad_rows(train_df)
@@ -785,6 +781,7 @@ train_df <- week_within_month(train_df)
 train_df <- get_season_feature(train_df)
 #train_df <- log_amount(train_df)
 train_df <- get_only_manhattan_data(train_df)
+#train_df <- airport_start_or_dest(train_df)
 train_df <- classify_fare_amount(train_df)
 train_df <- compute_fare_per_km(train_df)
 train_df <- remove_large_fare_per_km(train_df, 20)
@@ -801,10 +798,11 @@ ny_holidays_2014_2015 = c('2014-01-01',
 
 
 train_df$countdown = 0     # initialise new column
-for(j in 1:length(ny_holidays_2014)){
-  train_df = countdown_holidays(train_df, ny_holidays_2014[j])
+for(j in 1:length(ny_holidays_2014_2015)){
+  train_df = countdown_holidays(train_df, ny_holidays_2014_2015[j])
 }
 
+setwd('C:/Users/kleok/OneDrive/Desktop/Master in DSBA/Semester 2/ESSEC/Big Data Analytics/NYC_taxi_fare')
 train_df <- get_neighborhood(train_df)
 
 # One-hot Encoding
@@ -822,12 +820,6 @@ train_df <- train_df[train_df$pickup_date < as.Date('2015-01-01'), ]
 head(train_df)
 head(test_df)
 
-#encoding if necessary
-train_df <- encode_weekday(train_df)
-train_df <- encode_season(train_df)
-train_df$X <- NULL
-test_df$X <- NULL
-
 ## PLOTTING GRAPHS --------------------------------------------------------------------------------
 
 # specify which graph you want to plot if any
@@ -840,9 +832,9 @@ test_df$X <- NULL
 
 ################ MODEL A: Distance -> fare/km -> total_fare  #######################
 
-train_df$fare_per_km_pred = 0 
-train_df = estimate_fare_per_km_pred_cv(train_df, 'XGBoost')
-total_fare_pred(train_df,'XGBoost')
+#train_df$fare_per_km_pred = 0 
+#train_df = estimate_fare_per_km_pred_cv(train_df, 'XGBoost')
+#total_fare_pred(train_df,'XGBoost')
 
 
 ## CROSS VALIDATION ON AVG_FARE_PER_KM ------------------------------------------------------------
@@ -907,6 +899,33 @@ output <- final_predictions(train_df, test_df, features)
 ## PLOTTING RESULTS --------------------------------------------------------------------------------------------------------------
 plot_graphs(output$preds_df, 'Results, scatter_plot_true_vs_preds')
 plot_graphs(output$feature_importance, 'Results, importance of features')
+
+
+plot(roc(output$preds_df, lin_mod), print.auc = TRUE)
+
+
+####################### 2 Level Regression Model  ###############################
+
+# Find fare_per_km with cross validation both for train set and test set
+train_df$fare_per_km_pred = 0
+train_df = estimate_fare_per_km_pred_cv(train_df, 'XGBoost')
+test_df$fare_per_km_pred = 0
+test_df = estimate_fare_per_km_pred_cv(test_df, 'XGBoost')
+
+col_names = names(train_df)
+features = col_names[-c(1,2,8,9,10, 15,17,18,21)]     # to drop_off_neighbors remain, so have to be removed (21)
+                                                      # 18 do not need it because of  fare_per_km_pred (33)
+                                                      # feature 10 not used, already used in first regression
+target  = "fare_amount"
+
+h = xgb_prediction(train_df, test_df, features, target)
+# RMSE:  1.33741732231463  MSE:  1.78868509402723 
+#################### Plot true -prediction graph ########################
+output <- data.frame(matrix(unlist(h), nrow=length(h), byrow=T),stringsAsFactors=FALSE)
+output$true_val = test_df$fare_amount
+output$Predictions = h
+output = select(output, names(output)[-c(1)])
+plot_graphs(output,'Results, scatter_plot_true_vs_preds')
 
 
 
