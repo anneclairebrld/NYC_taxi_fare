@@ -754,6 +754,39 @@ xgb_prediction <- function (X_train, X_test, features, target){
   
 }
 
+xgb_classification <- function (X_train, X_test, features, target){
+  # format data 
+  # labels = as.numeric(X_train$fare_amount)
+  label_train =  select(X_train, target)
+  label_train = sapply(label_train, as.numeric) - 1
+  ind_var_train = select(X_train, features)
+  
+  XGB_classification <- xgb.DMatrix(data = as.matrix(sapply(ind_var_train, as.numeric)), label = as.matrix(label_train))
+  
+  params1 <- list(booster = "gbtree", objective = "binary:logistic", 
+                  eta=0.1, gamma=0, max_depth=7, min_child_weight=1, 
+                  subsample=1, colsample_bytree=1)
+  
+  
+  params <- list(booster = "gbtree", objective = "multi:softmax", num_class = 5, eta=0.1, gamma=0, max_depth=9, min_child_weight=1, 
+                 subsample=1, colsample_bytree=1)  
+  
+  amount_model <- xgb.train (params = params, data = XGB_classification, nrounds = 9, 
+                             print_every_n = 5,maximize = T , eval_metric = "auc") 
+  
+  label_test =  select(X_test, target)
+  label_test =  sapply(label_test, as.numeric) - 1
+  ind_var_test =select(X_test, features)
+  Test_input_data = xgb.DMatrix(data =as.matrix(sapply(ind_var_test, as.numeric)))
+  
+  predictions  <- predict(amount_model, Test_input_data)
+  
+  confusionMatrix(factor(predictions), factor(label_test))
+  
+  return(predictions)
+  
+}
+
 #------------------------------------------------------------------------------------------------
 
 # set working dir to my file 
@@ -913,13 +946,13 @@ test_df$fare_per_km_pred = 0
 test_df = estimate_fare_per_km_pred_cv(test_df, 'XGBoost')
 
 col_names = names(train_df)
-features = col_names[-c(1,2,8,9,10, 15,17,18,21)]     # to drop_off_neighbors remain, so have to be removed (21)
-                                                      # 18 do not need it because of  fare_per_km_pred (33)
+features = col_names[-c(1,2,8,9,10, 16,17,18,21)]     # to drop_off_neighbors remain, so have to be removed (21)
+                                                      # 17 do not need it because of  fare_per_km_pred (33)
                                                       # feature 10 not used, already used in first regression
 target  = "fare_amount"
 
 h = xgb_prediction(train_df, test_df, features, target)
-# RMSE:  1.33741732231463  MSE:  1.78868509402723 
+# RMSE:  2.23177740287931  MSE:  4.98083037600272
 #################### Plot true -prediction graph ########################
 output <- data.frame(matrix(unlist(h), nrow=length(h), byrow=T),stringsAsFactors=FALSE)
 output$true_val = test_df$fare_amount
@@ -928,4 +961,34 @@ output = select(output, names(output)[-c(1)])
 plot_graphs(output,'Results, scatter_plot_true_vs_preds')
 
 
+##################### Model: Classification -> Regeression ##################
+#train_df = select(train_df, names(train_df)[-c(409)])
+#test_df = select(test_df, names(train_df)[-c(409)])
+
+
+col_names = names(train_df)
+features = col_names[-c(1,2,8, 9, 10,16, 17, 18, 21)]         # 10 for second round, 16 is the target (do not include)
+                                                                    # 409 added from previous model
+target = "fare_amount_class"
+
+pred_fare_amount_class = xgb_classification(train_df, test_df, features, target)
+
+
+test_df$fare_amount_class = pred_fare_amount_class
+train_df$fare_amount_class = sapply(train_df$fare_amount_class, as.numeric) - 1    # bring it to the same format
+
+# 10  
+features = col_names[-c(1,2,8, 9,17,18, 21)]    # 16 einai auto pou ipologises, kai distance_kms to thelw edw (10), oxi 21 encoding
+                                                       
+target = "fare_amount"
+h = xgb_prediction(train_df, test_df, features, target)
+
+#RMSE:  2.49505321499959  MSE:  6.22529054567981   # by keeping fare_per_km prediction from previous model
+# RMSE:  2.21752144183221  MSE:  4.91740134498559 
+# Plot true predicted graph
+output <- data.frame(matrix(unlist(h), nrow=length(h), byrow=T),stringsAsFactors=FALSE)
+output$true_val = test_df$fare_amount
+output$Predictions = h
+output = select(output, names(output)[-c(1)])
+plot_graphs(output,'Results, scatter_plot_true_vs_preds')
 
