@@ -68,6 +68,27 @@ week_within_month <- function(df) {
   return(df)
 }
 
+airport_start_or_dest <- function(df){
+  #NYC_bounding_box = c(-74.26, -73.71 ,  40.43 , 40.95)
+  #JFK_bounding_box = c(-73.86, -73.75 ,  40.61 , 40.66)
+  #LGA_bounding_box = c(-73.91, -73.82 ,  40.75 , 40.79)
+  #EWR_bounding_box = c(-74.19, -74.15 , 40.67 , 40.70)
+  
+  df$NYC_dropoff <- ifelse(between(df$dropoff_longitude, -74.26, -73.71) & between(df$dropoff_latitude, 40.43, 40.95),1,0)
+  df$JKF_dropoff <- ifelse(between(df$dropoff_longitude, -73.86, -73.75) & between(df$dropoff_latitude, 40.61, 40.66),1,0)
+  df$LGA_dropoff <- ifelse(between(df$dropoff_longitude, -73.91, -73.82) & between(df$dropoff_latitude, 40.75, 40.79),1,0)
+  df$EWR_dropoff <- ifelse(between(df$dropoff_longitude, -74.19, -73.15) & between(df$dropoff_latitude, 40.67, 40.70),1,0)
+  
+  df$NYC_pickup <- ifelse(between(df$pickup_longitude, -74.26, -73.71) & between(df$pickup_latitude, 40.43, 40.95),1,0)
+  df$JKF_pickup <- ifelse(between(df$pickup_longitude, -73.86, -73.75) & between(df$pickup_latitude, 40.61, 40.66),1,0)
+  df$LGA_pickup <- ifelse(between(df$pickup_longitude, -73.91, -73.82) & between(df$pickup_latitude, 40.75, 40.79),1,0)
+  df$EWR_pickup <- ifelse(between(df$pickup_longitude, -74.19, -73.15) & between(df$pickup_latitude, 40.67, 40.70),1,0)
+  
+  df$trip_to_airport <- ifelse((df$LGA_dropoff == 1) | (df$LGA_pickup == 1) | (df$NYC_dropoff == 1) | (df$NYC_pickup == 1) |
+                                 (df$JFK_dropoff == 1) | (df$JFK_pickup == 1) | (df$EWT_dropoff == 1) | (df$EWT_pickup == 1) , 1, 0)
+  return(df)
+}
+
 
 add_NY_holidays <- function(df) {
   df$holiday = 0
@@ -172,6 +193,7 @@ routing_features <- function(df){
 
 get_only_manhattan_data <- function(df){
   df <- df %>% filter( between(dropoff_latitude, 40.70, 40.83) & between(dropoff_longitude, -74.025, -73.93) )
+  df <- df %>% filter( between(pickup_latitude, 40.70, 40.83) & between(pickup_longitude, -74.025, -73.93) )
   
   return(df)
 }
@@ -182,8 +204,9 @@ compute_distance <- function(df, type='euclidean'){
     df$distance_kms <- round(distHaversine (df[c('pickup_longitude', 'pickup_latitude')], df[c('dropoff_longitude','dropoff_latitude')]) / 1000,1)
     
     return(df)
-  } else {# case when computing shortest distance # to implement
+  } else if (type == 'harvesine'){# case when computing shortest distance # to implement
     
+      
     return(df)
   }
 }
@@ -214,6 +237,7 @@ get_neighborhood <- function(df){
   points_spdf <- points
   coordinates(points_spdf) <- ~lng + lat
   proj4string(points_spdf) <- proj4string(nyc_neighborhoods)
+
   matches <- over(points_spdf, nyc_neighborhoods)
   
   df$pickup_neighborhoods <- matches$name
@@ -601,10 +625,10 @@ final_predictions <- function(X_train, X_test, features){
   
   
   # declare model 
-  params <- list(booster = "gbtree", objective = "reg:squarederror", eta=0.4, gamma=0.1, max_depth=15, min_child_weight=1, 
+  params <- list(booster = "gbtree", objective = "reg:squarederror", eta=1, gamma=0.05, max_depth=7, 
                  subsample=1, colsample_bytree=1)  
 
-  amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 11, 
+  amount_model <- xgb.train (params = params, data = XGB_regression, nrounds = 50, 
                              print_every_n = 5,maximize = T , eval_metric = "rmse") 
   
   # get the importance of features
@@ -651,6 +675,7 @@ train_df <- week_within_month(train_df)
 train_df <- get_season_feature(train_df)
 #train_df <- log_amount(train_df)
 train_df <- get_only_manhattan_data(train_df)
+#train_df <- airport_start_or_dest(train_df)
 train_df <- classify_fare_amount(train_df)
 train_df <- compute_fare_per_km(train_df)
 
@@ -756,5 +781,7 @@ output <- final_predictions(train_df, test_df, features)
 plot_graphs(output$preds_df, 'Results, scatter_plot_true_vs_preds')
 plot_graphs(output$feature_importance, 'Results, importance of features')
 
+
+plot(roc(output$preds_df, lin_mod), print.auc = TRUE)
 
 
