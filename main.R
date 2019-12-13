@@ -392,7 +392,7 @@ encode_droppoffneigh <- function(df){
   rm(droppoffneigh1)
   rm(droppoffneigh2)
   rm(droppoffneigh3)
-  df$df$dropoff_neighborhoods<- NULL
+  df$dropoff_neighborhoods<- NULL
   return(df)
 }
 
@@ -921,7 +921,7 @@ head(test_df)
 
 ### FINAL PREDICTIONS FOR BASIC MODEL -------------------------------------------------------------------------------------------
 
-features <- c('pickup_latitude', 'pickup_longitude', 'dropoff_latitude', 'dropoff_longitude', 'pickup_neighborhoods', 'dropoff_neighborhoods',  'month_feature', 'passenger_count', 'pickup_hour',
+features <- c('pickup_latitude', 'pickup_longitude', 'dropoff_latitude', 'dropoff_longitude',   'month_feature', 'passenger_count', 'pickup_hour',
 'week_within_month', 'distance_kms', 'countdown', 'spring', 'summer', 'winter',  'df.weekday.Friday', 
 'df.weekday.Monday',  'df.weekday.Saturday', 'df.weekday.Sunday',  'df.weekday.Thursday', 
 'df.weekday.Tuesday', 'df.weekday.Wednesday', 'workday', 'month_feature', 'holiday')
