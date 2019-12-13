@@ -1,14 +1,23 @@
 
 data/
 
-.ipynb_checkpoints/
-
-.RData
+*.csv
 
 .Rhistory
 
-*.pper
+.Rhistory
 
-.Rproj.user/160AF38C/
+.RData
+.Rproj.user
 
-.Rproj.user/shared/notebooks/
+.ipynb_checkpoints/
+
+*.history
+
+.DS_Store
+
+*.jpeg
+
+*.png
+
+out/
